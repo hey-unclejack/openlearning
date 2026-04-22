@@ -1,62 +1,70 @@
 import Link from "next/link";
 import { AppShell } from "@/components/layout/app-shell";
 import { getDashboardSnapshot } from "@/lib/content";
+import { getLocaleCopy } from "@/lib/i18n";
+import { getLocale } from "@/lib/i18n-server";
 import { getCurrentUser, getSessionIdFromHeaders } from "@/lib/session";
 
 export default async function DashboardPage() {
   const sessionId = await getSessionIdFromHeaders();
   const user = await getCurrentUser();
   const snapshot = await getDashboardSnapshot(sessionId);
+  const locale = await getLocale();
+  const copy = getLocaleCopy(locale);
 
   return (
-    <AppShell activePath="/dashboard" userEmail={user?.email}>
+    <AppShell activePath="/dashboard" locale={locale} userEmail={user?.email}>
       <section className="stack">
         <div className="panel-header">
           <div>
-            <div className="eyebrow">Dashboard</div>
-            <h1 className="page-title">Today runs on memory, not motivation.</h1>
+            <div className="eyebrow">{copy.dashboard.eyebrow}</div>
+            <h1 className="page-title">{copy.dashboard.title}</h1>
           </div>
           <Link className="button" href="/study/today">
-            Start today
+            {copy.dashboard.startToday}
           </Link>
         </div>
 
         <div className="dashboard-grid">
           <div className="metric-card">
-            <div className="metric-label subtle">Due now</div>
+            <div className="metric-label subtle">{copy.dashboard.dueNow}</div>
             <div className="metric-value">{snapshot.stats.dueCount}</div>
-            <p className="subtle">優先完成這批到期卡片，再進新內容。</p>
+            <p className="subtle">{copy.dashboard.dueBody}</p>
           </div>
           <div className="metric-card">
-            <div className="metric-label subtle">Retention score</div>
+            <div className="metric-label subtle">{copy.dashboard.retentionScore}</div>
             <div className="metric-value">{snapshot.retentionScore}%</div>
-            <p className="subtle">根據複習間隔、答題穩定度與 lapse 估算。</p>
+            <p className="subtle">{copy.dashboard.retentionBody}</p>
           </div>
           <div className="metric-card">
-            <div className="metric-label subtle">Current streak</div>
-            <div className="metric-value">{snapshot.stats.streak} days</div>
-            <p className="subtle">短任務、高頻率，比一次塞很多更重要。</p>
+            <div className="metric-label subtle">{copy.dashboard.currentStreak}</div>
+            <div className="metric-value">
+              {snapshot.stats.streak} {copy.dashboard.streakUnit}
+            </div>
+            <p className="subtle">{copy.dashboard.streakBody}</p>
           </div>
         </div>
 
         <div className="lesson-grid">
           <div className="review-card">
-            <div className="eyebrow">Current lesson</div>
+            <div className="eyebrow">{copy.dashboard.currentLesson}</div>
             <h2 className="section-title">{snapshot.planDay.title}</h2>
             <p className="subtle">{snapshot.planDay.objective}</p>
             <div className="button-row">
               <Link className="button-secondary" href={`/study/lesson/lesson-${snapshot.planDay.id}`}>
-                Open lesson
+                {copy.dashboard.openLesson}
               </Link>
             </div>
           </div>
           <div className="review-card">
-            <div className="eyebrow">Weak spots</div>
+            <div className="eyebrow">{copy.dashboard.weakSpots}</div>
             <ul className="list">
               {snapshot.stats.weakItems.map((item) => (
                 <li key={item.id}>
                   <strong>{item.back}</strong>
-                  <div className="subtle">lapses {item.lapseCount}</div>
+                  <div className="subtle">
+                    {copy.dashboard.lapses} {item.lapseCount}
+                  </div>
                 </li>
               ))}
             </ul>
@@ -64,15 +72,17 @@ export default async function DashboardPage() {
         </div>
 
         <div className="review-card">
-          <div className="eyebrow">Recent review activity</div>
+          <div className="eyebrow">{copy.dashboard.recentReview}</div>
           <ul className="list">
             {snapshot.recentLogs.length === 0 ? (
-              <li className="subtle">還沒有 review log。先去完成今天的複習。</li>
+              <li className="subtle">{copy.dashboard.noLogs}</li>
             ) : (
               snapshot.recentLogs.map((log) => (
                 <li key={`${log.itemId}-${log.reviewedAt}`}>
                   <strong>{log.grade}</strong>
-                  <div className="subtle">next due {new Date(log.nextDueDate).toLocaleDateString()}</div>
+                  <div className="subtle">
+                    {copy.dashboard.nextDue} {new Date(log.nextDueDate).toLocaleDateString(locale)}
+                  </div>
                 </li>
               ))
             )}

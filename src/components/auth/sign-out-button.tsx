@@ -1,10 +1,12 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { AppLocale, getLocaleCopy } from "@/lib/i18n";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
 
-export function SignOutButton() {
+export function SignOutButton({ locale }: { locale: AppLocale }) {
   const router = useRouter();
+  const copy = getLocaleCopy(locale);
 
   return (
     <button
@@ -17,7 +19,7 @@ export function SignOutButton() {
       }}
       type="button"
     >
-      Sign out
+      {copy.appShell.signOut}
     </button>
   );
 }

@@ -1,14 +1,19 @@
 import type { Metadata } from "next";
 import "@/app/globals.css";
+import { getLocaleCopy } from "@/lib/i18n";
+import { getLocale } from "@/lib/i18n-server";
 
 export const metadata: Metadata = {
   title: "OpenLearning",
   description: "SRS-first language learning assistant"
 };
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  const locale = await getLocale();
+  const copy = getLocaleCopy(locale);
+
   return (
-    <html lang="en">
+    <html lang={copy.htmlLang}>
       <body>{children}</body>
     </html>
   );

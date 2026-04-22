@@ -1,3 +1,4 @@
+import { AppLocale } from "@/lib/i18n";
 import { ReviewGrade, ReviewItem } from "@/lib/types";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -6,17 +7,23 @@ function addDays(date: Date, days: number) {
   return new Date(date.getTime() + days * DAY_MS);
 }
 
-export function scoreToLabel(grade: ReviewGrade) {
-  switch (grade) {
-    case "again":
-      return "重來";
-    case "hard":
-      return "吃力";
-    case "good":
-      return "剛好";
-    case "easy":
-      return "很穩";
-  }
+export function scoreToLabel(grade: ReviewGrade, locale: AppLocale = "zh-TW") {
+  const labels =
+    locale === "zh-TW"
+      ? {
+          again: "重來",
+          hard: "吃力",
+          good: "剛好",
+          easy: "很穩"
+        }
+      : {
+          again: "Again",
+          hard: "Hard",
+          good: "Good",
+          easy: "Easy"
+        };
+
+  return labels[grade];
 }
 
 export function updateReviewItem(
