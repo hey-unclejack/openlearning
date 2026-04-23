@@ -12,10 +12,13 @@ export function PracticeTrainer({ questions, locale }: { questions: PracticeQues
   const copy = getLocaleCopy(locale);
 
   return (
-    <div className="stack">
+    <div className="stack lesson-practice-section">
       {questions.map((question) => (
-        <div key={question.id} className="practice-card">
-          <div className="eyebrow">{copy.lesson.practice}</div>
+        <div key={question.id} className="practice-card lesson-practice-card">
+          <div className="practice-card-header">
+            <div className="eyebrow">{copy.lesson.practice}</div>
+            <span className="pill lesson-practice-pill">{copy.lesson.practiceQuestionLabel(question.id)}</span>
+          </div>
           <h3 className="section-title">{question.prompt}</h3>
           <p className="subtle">
             {copy.lesson.promptHint}

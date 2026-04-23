@@ -1,21 +1,27 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
 import { LOCALE_COOKIE, USER_LOCALE_METADATA_KEY, resolveLocale } from "@/lib/i18n";
 
 export async function GET(request: Request) {
-  const requestUrl = new URL(request.url);
-  const code = requestUrl.searchParams.get("code");
-  const cookieStore = await cookies();
-  let next = requestUrl.searchParams.get("next") ?? "/dashboard";
+  const url = new URL(request.url);
+  const lang = resolveLocale(url.searchParams.get("lang"));
+  const next = url.searchParams.get("next") ?? "/";
+  const safeNext = next.startsWith("/") ? next : "/";
+  const redirectUrl = new URL(safeNext, url.origin);
+  redirectUrl.searchParams.set("saved", "1");
 
-  if (!next.startsWith("/")) {
-    next = "/dashboard";
-  }
+  const response = NextResponse.redirect(redirectUrl);
+  response.cookies.set(LOCALE_COOKIE, lang, {
+    httpOnly: false,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: 60 * 60 * 24 * 365
+  });
 
-  const response = NextResponse.redirect(new URL(next, requestUrl.origin));
-
-  if (code && process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+  if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+    const cookieStore = await cookies();
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
@@ -34,18 +40,14 @@ export async function GET(request: Request) {
       },
     );
 
-    await supabase.auth.exchangeCodeForSession(code);
-
     const {
       data: { user }
     } = await supabase.auth.getUser();
-    const cookieLocale = cookieStore.get(LOCALE_COOKIE)?.value;
-    const existingUserLocale = user?.user_metadata?.[USER_LOCALE_METADATA_KEY];
 
-    if (user && !existingUserLocale && cookieLocale) {
+    if (user) {
       await supabase.auth.updateUser({
         data: {
-          [USER_LOCALE_METADATA_KEY]: resolveLocale(cookieLocale)
+          [USER_LOCALE_METADATA_KEY]: lang
         }
       });
     }

@@ -1,8 +1,18 @@
-import { cache } from "react";
+import { buildCourseState, buildCourseTrack, buildReviewItemsForLesson } from "@/lib/data/curriculum";
 import { createInitialState } from "@/lib/data/seed";
 import { updateReviewItem } from "@/lib/srs";
 import { getSupabaseAdminClient } from "@/lib/supabase";
-import { AppState, LearnerProfile, ReviewGrade, ReviewItem } from "@/lib/types";
+import {
+  AppState,
+  CourseLesson,
+  LearnerProfile,
+  LearningFocus,
+  NativeLanguage,
+  ProficiencyLevel,
+  ReviewGrade,
+  ReviewItem,
+  TargetLanguage
+} from "@/lib/types";
 
 declare global {
   // eslint-disable-next-line no-var
@@ -19,24 +29,6 @@ type ProfileRow = {
   level: LearnerProfile["level"];
   daily_minutes: number;
   focus: string;
-};
-
-type PlanRow = {
-  day_id: string;
-  day_number: number;
-  title: string;
-  objective: string;
-  vocabulary: string[];
-  chunks: string[];
-  dialogue: string[];
-};
-
-type LessonRow = {
-  lesson_id: string;
-  day_id: string;
-  intro: string;
-  coaching_note: string;
-  practice: AppState["lessons"][string]["practice"];
 };
 
 type ReviewItemRow = {
@@ -94,97 +86,24 @@ function profileToRow(sessionId: string, state: AppState): ProfileRow {
   };
 }
 
-function mapSupabaseState(
-  profile: ProfileRow,
-  planRows: PlanRow[],
-  lessonRows: LessonRow[],
-  reviewItemRows: ReviewItemRow[],
-  reviewLogRows: ReviewLogRow[],
-): AppState {
-  const lessons = Object.fromEntries(
-    lessonRows.map((row) => [
-      row.lesson_id,
-      {
-        id: row.lesson_id,
-        dayId: row.day_id,
-        intro: row.intro,
-        coachingNote: row.coaching_note,
-        practice: row.practice
-      }
-    ]),
-  );
-
+function reviewItemFromRow(row: ReviewItemRow): ReviewItem {
   return {
-    onboarded: profile.onboarded,
-    streak: profile.streak,
-    currentDay: profile.current_day,
-    profile: {
-      targetLanguage: profile.target_language,
-      nativeLanguage: profile.native_language,
-      level: profile.level,
-      dailyMinutes: profile.daily_minutes,
-      focus: profile.focus
-    },
-    plan: planRows.map((row) => ({
-      id: row.day_id,
-      dayNumber: row.day_number,
-      title: row.title,
-      objective: row.objective,
-      vocabulary: row.vocabulary,
-      chunks: row.chunks,
-      dialogue: row.dialogue
-    })),
-    lessons,
-    reviewItems: reviewItemRows.map((row) => ({
-      id: row.review_item_id,
-      front: row.front,
-      back: row.back,
-      hint: row.hint,
-      tags: row.tags,
-      easeFactor: row.ease_factor,
-      intervalDays: row.interval_days,
-      repetitionCount: row.repetition_count,
-      lapseCount: row.lapse_count,
-      dueDate: row.due_date,
-      lastReviewedAt: row.last_reviewed_at ?? undefined
-    })),
-    reviewLogs: reviewLogRows.map((row) => ({
-      itemId: row.review_item_id,
-      grade: row.grade,
-      reviewedAt: row.reviewed_at,
-      nextDueDate: row.next_due_date
-    }))
+    id: row.review_item_id,
+    front: row.front,
+    back: row.back,
+    hint: row.hint,
+    tags: row.tags,
+    easeFactor: row.ease_factor,
+    intervalDays: row.interval_days,
+    repetitionCount: row.repetition_count,
+    lapseCount: row.lapse_count,
+    dueDate: row.due_date,
+    lastReviewedAt: row.last_reviewed_at ?? undefined
   };
 }
 
-async function seedSupabaseSession(sessionId: string) {
-  const client = getSupabaseAdminClient();
-
-  if (!client) {
-    return;
-  }
-
-  const seed = createInitialState();
-  const profileRow = profileToRow(sessionId, seed);
-  const planRows = seed.plan.map((item) => ({
-    session_id: sessionId,
-    day_id: item.id,
-    day_number: item.dayNumber,
-    title: item.title,
-    objective: item.objective,
-    vocabulary: item.vocabulary,
-    chunks: item.chunks,
-    dialogue: item.dialogue
-  }));
-  const lessonRows = Object.values(seed.lessons).map((lesson) => ({
-    session_id: sessionId,
-    lesson_id: lesson.id,
-    day_id: lesson.dayId,
-    intro: lesson.intro,
-    coaching_note: lesson.coachingNote,
-    practice: lesson.practice
-  }));
-  const reviewRows = seed.reviewItems.map((item) => ({
+function reviewItemToRow(sessionId: string, item: ReviewItem) {
+  return {
     session_id: sessionId,
     review_item_id: item.id,
     front: item.front,
@@ -197,12 +116,75 @@ async function seedSupabaseSession(sessionId: string) {
     lapse_count: item.lapseCount,
     due_date: item.dueDate,
     last_reviewed_at: item.lastReviewedAt ?? null
-  }));
+  };
+}
 
-  await client.from("learner_profiles").upsert(profileRow, { onConflict: "session_id" });
-  await client.from("study_plan_days").upsert(planRows, { onConflict: "session_id,day_id" });
-  await client.from("lessons").upsert(lessonRows, { onConflict: "session_id,lesson_id" });
-  await client.from("review_items").upsert(reviewRows, { onConflict: "session_id,review_item_id" });
+function mapSupabaseState(profile: ProfileRow, reviewItemRows: ReviewItemRow[], reviewLogRows: ReviewLogRow[]): AppState {
+  return buildCourseState({
+    onboarded: profile.onboarded,
+    streak: profile.streak,
+    currentDay: profile.current_day,
+    profile: {
+      targetLanguage: profile.target_language as TargetLanguage,
+      nativeLanguage: profile.native_language as NativeLanguage,
+      level: profile.level as ProficiencyLevel,
+      dailyMinutes: profile.daily_minutes,
+      focus: profile.focus as LearningFocus
+    },
+    reviewItems: reviewItemRows.map(reviewItemFromRow),
+    reviewLogs: reviewLogRows.map((row) => ({
+      itemId: row.review_item_id,
+      grade: row.grade,
+      reviewedAt: row.reviewed_at,
+      nextDueDate: row.next_due_date
+    }))
+  });
+}
+
+function replaceLocalState(sessionId: string, nextState: AppState) {
+  getLocalStateMap().set(sessionId, nextState);
+  return nextState;
+}
+
+function findCourseLesson(profile: LearnerProfile, lessonId: string): CourseLesson | undefined {
+  const track = buildCourseTrack(profile);
+
+  for (const unit of track.units) {
+    const lesson = unit.lessons.find((item) => item.id === lessonId);
+    if (lesson) {
+      return lesson;
+    }
+  }
+
+  return undefined;
+}
+
+function rebuildState(state: AppState, overrides: Partial<Pick<AppState, "onboarded" | "streak" | "profile" | "currentDay" | "reviewItems" | "reviewLogs">>) {
+  return buildCourseState({
+    onboarded: overrides.onboarded ?? state.onboarded,
+    streak: overrides.streak ?? state.streak,
+    profile: overrides.profile ?? state.profile ?? createInitialState().profile!,
+    currentDay: overrides.currentDay ?? state.currentDay,
+    reviewItems: overrides.reviewItems ?? state.reviewItems,
+    reviewLogs: overrides.reviewLogs ?? state.reviewLogs
+  });
+}
+
+async function seedSupabaseSession(sessionId: string) {
+  const client = getSupabaseAdminClient();
+
+  if (!client) {
+    return;
+  }
+
+  const seed = createInitialState();
+  await client.from("learner_profiles").upsert(
+    {
+      ...profileToRow(sessionId, seed),
+      updated_at: new Date().toISOString()
+    },
+    { onConflict: "session_id" }
+  );
 }
 
 async function ensureSupabaseState(sessionId: string) {
@@ -232,41 +214,29 @@ async function fetchStateFromSupabase(sessionId: string): Promise<AppState | nul
     return null;
   }
 
-  const [
-    profileResult,
-    planResult,
-    lessonResult,
-    reviewItemsResult,
-    reviewLogsResult
-  ] = await Promise.all([
+  const [profileResult, reviewItemsResult, reviewLogsResult] = await Promise.all([
     client.from("learner_profiles").select("*").eq("session_id", sessionId).single(),
-    client.from("study_plan_days").select("*").eq("session_id", sessionId).order("day_number"),
-    client.from("lessons").select("*").eq("session_id", sessionId),
     client.from("review_items").select("*").eq("session_id", sessionId),
-    client.from("review_logs").select("*").eq("session_id", sessionId).order("reviewed_at", { ascending: false }).limit(20)
+    client.from("review_logs").select("*").eq("session_id", sessionId).order("reviewed_at", { ascending: false }).limit(50)
   ]);
 
-  if (profileResult.error || planResult.error || lessonResult.error || reviewItemsResult.error || reviewLogsResult.error) {
+  if (profileResult.error || reviewItemsResult.error || reviewLogsResult.error) {
     throw new Error("Failed to load learner state from Supabase");
   }
 
   return mapSupabaseState(
     profileResult.data as unknown as ProfileRow,
-    planResult.data as unknown as PlanRow[],
-    lessonResult.data as unknown as LessonRow[],
     reviewItemsResult.data as unknown as ReviewItemRow[],
-    reviewLogsResult.data as unknown as ReviewLogRow[],
+    reviewLogsResult.data as unknown as ReviewLogRow[]
   );
 }
 
-const getCachedSupabaseState = cache(fetchStateFromSupabase);
-
 export async function readState(sessionId: string) {
   try {
-    const supabaseState = await getCachedSupabaseState(sessionId);
+    const supabaseState = await fetchStateFromSupabase(sessionId);
 
     if (supabaseState) {
-      return supabaseState;
+      return replaceLocalState(sessionId, supabaseState);
     }
   } catch {
     return getLocalState(sessionId);
@@ -277,40 +247,117 @@ export async function readState(sessionId: string) {
 
 export async function saveProfile(sessionId: string, profile: LearnerProfile) {
   const client = getSupabaseAdminClient();
+  const currentState = await readState(sessionId);
+  const nextState = rebuildState(currentState, {
+    onboarded: true,
+    profile
+  });
 
   if (!client) {
-    const state = getLocalState(sessionId);
-    state.profile = profile;
-    state.onboarded = true;
+    replaceLocalState(sessionId, nextState);
     return;
   }
 
   try {
     await ensureSupabaseState(sessionId);
-    await client
+    const { error } = await client
       .from("learner_profiles")
-      .update({
-        target_language: profile.targetLanguage,
-        native_language: profile.nativeLanguage,
-        level: profile.level,
-        daily_minutes: profile.dailyMinutes,
-        focus: profile.focus,
-        onboarded: true
-      })
-      .eq("session_id", sessionId);
+      .upsert(
+        {
+          ...profileToRow(sessionId, nextState),
+          updated_at: new Date().toISOString()
+        },
+        { onConflict: "session_id" }
+      );
+
+    if (error) {
+      throw error;
+    }
+
+    replaceLocalState(sessionId, nextState);
   } catch {
-    const state = getLocalState(sessionId);
-    state.profile = profile;
-    state.onboarded = true;
+    replaceLocalState(sessionId, nextState);
   }
 }
 
 export async function getTodayLesson(sessionId: string) {
   const state = await readState(sessionId);
   const planDay = state.plan.find((item) => item.dayNumber === state.currentDay) ?? state.plan[0];
-  const lesson = state.lessons[`lesson-${planDay.id}`];
+  const lesson = state.lessons[planDay.lessonId];
 
   return { planDay, lesson };
+}
+
+export async function completeLesson(sessionId: string, lessonId: string) {
+  const client = getSupabaseAdminClient();
+  const state = await readState(sessionId);
+  const today = state.plan.find((item) => item.dayNumber === state.currentDay) ?? state.plan[0];
+
+  if (!today || today.lessonId !== lessonId || !state.profile) {
+    return {
+      currentDay: state.currentDay,
+      nextLessonId: today?.lessonId
+    };
+  }
+
+  const courseLesson = findCourseLesson(state.profile, lessonId);
+  if (!courseLesson) {
+    throw new Error("Lesson not found");
+  }
+
+  const newReviewItems = buildReviewItemsForLesson(courseLesson).filter(
+    (item) => !state.reviewItems.some((existing) => existing.id === item.id)
+  );
+  const mergedReviewItems = [...state.reviewItems, ...newReviewItems];
+  const nextDay = Math.min(state.plan.length, state.currentDay + 1);
+  const nextState = rebuildState(state, {
+    currentDay: nextDay,
+    reviewItems: mergedReviewItems
+  });
+  const nextPlanDay = nextState.plan.find((item) => item.dayNumber === nextState.currentDay);
+
+  if (!client) {
+    replaceLocalState(sessionId, nextState);
+    return {
+      currentDay: nextState.currentDay,
+      nextLessonId: nextPlanDay?.lessonId
+    };
+  }
+
+  try {
+    await ensureSupabaseState(sessionId);
+
+    const profilePayload = {
+      ...profileToRow(sessionId, nextState),
+      updated_at: new Date().toISOString()
+    };
+    const { error: profileError } = await client
+      .from("learner_profiles")
+      .upsert(profilePayload, { onConflict: "session_id" });
+
+    if (profileError) {
+      throw profileError;
+    }
+
+    if (newReviewItems.length > 0) {
+      const { error: reviewError } = await client
+        .from("review_items")
+        .upsert(newReviewItems.map((item) => reviewItemToRow(sessionId, item)), { onConflict: "session_id,review_item_id" });
+
+      if (reviewError) {
+        throw reviewError;
+      }
+    }
+
+    replaceLocalState(sessionId, nextState);
+  } catch {
+    replaceLocalState(sessionId, nextState);
+  }
+
+  return {
+    currentDay: nextState.currentDay,
+    nextLessonId: nextPlanDay?.lessonId
+  };
 }
 
 export async function getDueReviewItems(sessionId: string) {
@@ -335,19 +382,7 @@ export async function getDueReviewItems(sessionId: string) {
       throw new Error("Failed to fetch due review items");
     }
 
-    return (data as unknown as ReviewItemRow[]).map((row) => ({
-      id: row.review_item_id,
-      front: row.front,
-      back: row.back,
-      hint: row.hint,
-      tags: row.tags,
-      easeFactor: row.ease_factor,
-      intervalDays: row.interval_days,
-      repetitionCount: row.repetition_count,
-      lapseCount: row.lapse_count,
-      dueDate: row.due_date,
-      lastReviewedAt: row.last_reviewed_at ?? undefined
-    }));
+    return (data as unknown as ReviewItemRow[]).map(reviewItemFromRow);
   } catch {
     const now = Date.now();
     return getLocalState(sessionId).reviewItems.filter((item) => new Date(item.dueDate).getTime() <= now);
@@ -392,19 +427,7 @@ export async function reviewItem(sessionId: string, itemId: string, grade: Revie
       throw new Error("Review item not found");
     }
 
-    const currentItem: ReviewItem = {
-      id: data.review_item_id,
-      front: data.front,
-      back: data.back,
-      hint: data.hint,
-      tags: data.tags,
-      easeFactor: data.ease_factor,
-      intervalDays: data.interval_days,
-      repetitionCount: data.repetition_count,
-      lapseCount: data.lapse_count,
-      dueDate: data.due_date,
-      lastReviewedAt: data.last_reviewed_at ?? undefined
-    };
+    const currentItem = reviewItemFromRow(data as unknown as ReviewItemRow);
     const reviewedAt = new Date();
     const updated = updateReviewItem(currentItem, grade, reviewedAt);
 
@@ -427,6 +450,18 @@ export async function reviewItem(sessionId: string, itemId: string, grade: Revie
       grade,
       reviewed_at: reviewedAt.toISOString(),
       next_due_date: updated.dueDate
+    });
+
+    const state = getLocalState(sessionId);
+    const reviewIndex = state.reviewItems.findIndex((item) => item.id === itemId);
+    if (reviewIndex !== -1) {
+      state.reviewItems[reviewIndex] = updated;
+    }
+    state.reviewLogs.unshift({
+      itemId,
+      grade,
+      reviewedAt: reviewedAt.toISOString(),
+      nextDueDate: updated.dueDate
     });
 
     return updated;
@@ -464,7 +499,7 @@ export function deriveStats(state: AppState) {
     masteredCount,
     weakItems,
     streak: state.streak,
-    completedDays: state.currentDay - 1,
+    completedDays: Math.max(0, state.currentDay - 1),
     planDays: state.plan.length,
     totalReviews: state.reviewLogs.length
   };
@@ -477,7 +512,7 @@ export function deriveRetentionScore(state: AppState) {
 
   const total = state.reviewItems.reduce(
     (sum, item) => sum + Math.min(100, 35 + item.intervalDays * 8 + item.repetitionCount * 6 - item.lapseCount * 8),
-    0,
+    0
   );
 
   return Math.round(total / state.reviewItems.length);

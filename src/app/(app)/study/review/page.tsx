@@ -15,7 +15,7 @@ export default async function ReviewPage() {
 
   return (
     <AppShell activePath="/study/review" locale={locale} userEmail={user?.email}>
-      <section className="stack">
+      <section className="stack review-page">
         <div className="panel-header">
           <div>
             <div className="eyebrow">{copy.reviewPage.eyebrow}</div>
@@ -25,6 +25,24 @@ export default async function ReviewPage() {
           <Link className="button-secondary" href="/study/today">
             {copy.reviewPage.back}
           </Link>
+        </div>
+        <div className="review-hero-grid">
+          <div className="review-card review-summary-card">
+            <div className="review-summary-head">
+              <div className="eyebrow">{copy.reviewPage.queueLabel}</div>
+              <span className="pill lesson-meta-pill-secondary">{copy.reviewPage.remaining(items.length)}</span>
+            </div>
+            <div className="metric-value">{items.length}</div>
+            <p className="subtle">{copy.reviewPage.queueCount(items.length)}</p>
+          </div>
+          <div className="review-card review-summary-card review-summary-card-soft">
+            <div className="eyebrow">{copy.reviewPage.flowLabel}</div>
+            <ol className="lesson-flow-list">
+              <li>{copy.reviewPage.flowRecall}</li>
+              <li>{copy.reviewPage.flowGrade}</li>
+              <li>{copy.reviewPage.flowReturn}</li>
+            </ol>
+          </div>
         </div>
         <ReviewTrainer initialItems={items} locale={locale} />
       </section>

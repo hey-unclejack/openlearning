@@ -1,23 +1,39 @@
 export type ProficiencyLevel = "A1" | "A2" | "B1" | "B2";
+export type TargetLanguage = "english";
+export type NativeLanguage = "zh-TW";
+export type LearningFocus = "travel" | "daily" | "work" | "exam";
+export type CourseStage = "foundation" | "mobility" | "daily" | "work";
 
 export type ReviewGrade = "again" | "hard" | "good" | "easy";
 
 export interface LearnerProfile {
-  targetLanguage: string;
-  nativeLanguage: string;
+  targetLanguage: TargetLanguage;
+  nativeLanguage: NativeLanguage;
   level: ProficiencyLevel;
   dailyMinutes: number;
-  focus: string;
+  focus: LearningFocus;
 }
 
 export interface StudyPlanDay {
   id: string;
+  lessonId: string;
+  unitId: string;
+  unitTitle: string;
+  unitNumber: number;
   dayNumber: number;
   title: string;
   objective: string;
   vocabulary: string[];
   chunks: string[];
   dialogue: string[];
+}
+
+export interface LessonReviewSeed {
+  id: string;
+  front: string;
+  back: string;
+  hint: string;
+  tags: string[];
 }
 
 export interface PracticeQuestion {
@@ -28,12 +44,42 @@ export interface PracticeQuestion {
   acceptableAnswers?: string[];
 }
 
-export interface Lesson {
+export interface LessonAsset {
   id: string;
-  dayId: string;
+  unitId: string;
   intro: string;
   coachingNote: string;
   practice: PracticeQuestion[];
+  reviewSeeds: LessonReviewSeed[];
+}
+
+export interface CourseLesson {
+  id: string;
+  unitId: string;
+  lessonNumber: number;
+  dayNumber: number;
+  title: string;
+  objective: string;
+  vocabulary: string[];
+  chunks: string[];
+  dialogue: string[];
+  asset: LessonAsset;
+}
+
+export interface CourseUnit {
+  id: string;
+  unitNumber: number;
+  stage: CourseStage;
+  title: string;
+  summary: string;
+  lessons: CourseLesson[];
+}
+
+export interface CourseTrack {
+  id: string;
+  title: string;
+  language: TargetLanguage;
+  units: CourseUnit[];
 }
 
 export interface ReviewItem {
@@ -62,8 +108,9 @@ export interface AppState {
   streak: number;
   profile?: LearnerProfile;
   currentDay: number;
+  courseTrack: CourseTrack;
   plan: StudyPlanDay[];
-  lessons: Record<string, Lesson>;
+  lessons: Record<string, LessonAsset>;
   reviewItems: ReviewItem[];
   reviewLogs: ReviewLog[];
 }

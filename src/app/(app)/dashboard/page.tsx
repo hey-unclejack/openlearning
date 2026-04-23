@@ -14,7 +14,7 @@ export default async function DashboardPage() {
 
   return (
     <AppShell activePath="/dashboard" locale={locale} userEmail={user?.email}>
-      <section className="stack">
+      <section className="stack dashboard-page">
         <div className="panel-header">
           <div>
             <div className="eyebrow">{copy.dashboard.eyebrow}</div>
@@ -45,18 +45,29 @@ export default async function DashboardPage() {
           </div>
         </div>
 
-        <div className="lesson-grid">
-          <div className="review-card">
-            <div className="eyebrow">{copy.dashboard.currentLesson}</div>
+        <div className="lesson-grid dashboard-lesson-grid">
+          <div className="review-card dashboard-lesson-card">
+            <div className="dashboard-lesson-meta">
+              <div className="eyebrow">{copy.dashboard.currentLesson}</div>
+              <span className="pill lesson-meta-pill-secondary">{copy.dashboard.lessonPill}</span>
+            </div>
+            <div className="dashboard-lesson-head">
+              <span className="pill">{copy.dashboard.dayLabel(snapshot.planDay.dayNumber)}</span>
+              <p className="subtle">{copy.dashboard.unitLabel(snapshot.planDay.unitNumber, snapshot.planDay.unitTitle)}</p>
+            </div>
             <h2 className="section-title">{snapshot.planDay.title}</h2>
             <p className="subtle">{snapshot.planDay.objective}</p>
+            <div className="muted-box dashboard-lesson-note">
+              <div className="eyebrow">{copy.dashboard.beforeBegin}</div>
+              <p className="subtle">{snapshot.lesson.intro}</p>
+            </div>
             <div className="button-row">
-              <Link className="button-secondary" href={`/study/lesson/lesson-${snapshot.planDay.id}`}>
+              <Link className="button-secondary" href={`/study/lesson/${snapshot.planDay.lessonId}`}>
                 {copy.dashboard.openLesson}
               </Link>
             </div>
           </div>
-          <div className="review-card">
+          <div className="review-card dashboard-side-card">
             <div className="eyebrow">{copy.dashboard.weakSpots}</div>
             <ul className="list">
               {snapshot.stats.weakItems.map((item) => (
@@ -71,7 +82,7 @@ export default async function DashboardPage() {
           </div>
         </div>
 
-        <div className="review-card">
+        <div className="review-card dashboard-side-card">
           <div className="eyebrow">{copy.dashboard.recentReview}</div>
           <ul className="list">
             {snapshot.recentLogs.length === 0 ? (

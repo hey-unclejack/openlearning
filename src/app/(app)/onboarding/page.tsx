@@ -1,51 +1,16 @@
-import { AppShell } from "@/components/layout/app-shell";
-import { OnboardingForm } from "@/components/onboarding/onboarding-form";
-import { getLocaleCopy } from "@/lib/i18n";
-import { getLocale } from "@/lib/i18n-server";
-import { readState } from "@/lib/store";
-import { getCurrentUser, getSessionIdFromHeaders } from "@/lib/session";
+import { redirect } from "next/navigation";
 
-export default async function OnboardingPage() {
-  const sessionId = await getSessionIdFromHeaders();
-  const user = await getCurrentUser();
-  const state = await readState(sessionId);
-  const locale = await getLocale();
-  const copy = getLocaleCopy(locale);
+export default async function LegacyOnboardingPage({
+  searchParams
+}: {
+  searchParams: Promise<{ next?: string; edit?: string; updated?: string }>;
+}) {
+  const params = await searchParams;
+  const query = new URLSearchParams();
 
-  return (
-    <AppShell activePath="/onboarding" locale={locale} userEmail={user?.email}>
-      <section className="stack">
-        <div className="panel-header">
-          <div>
-            <div className="eyebrow">{copy.onboarding.eyebrow}</div>
-            <h1 className="page-title">{copy.onboarding.title}</h1>
-            <p className="lede">{copy.onboarding.body}</p>
-          </div>
-        </div>
-        <div className="lesson-grid">
-          <div className="review-card">
-            <h3 className="section-title">{copy.onboarding.profile}</h3>
-            <OnboardingForm locale={locale} />
-          </div>
-          <div className="review-card">
-            <h3 className="section-title">{copy.onboarding.currentDefaults}</h3>
-            <ul className="list">
-              <li>
-                {copy.onboarding.targetLanguage}: {state.profile?.targetLanguage}
-              </li>
-              <li>
-                {copy.onboarding.level}: {state.profile?.level}
-              </li>
-              <li>
-                {copy.onboarding.focus}: {state.profile?.focus}
-              </li>
-              <li>
-                {copy.onboarding.dailyMinutes}: {state.profile?.dailyMinutes}
-              </li>
-            </ul>
-          </div>
-        </div>
-      </section>
-    </AppShell>
-  );
+  if (params.next) query.set("next", params.next);
+  if (params.edit) query.set("edit", params.edit);
+  if (params.updated) query.set("updated", params.updated);
+
+  redirect(query.size ? `/profile/goals?${query.toString()}` : "/profile/goals");
 }

@@ -1,11 +1,15 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { APP_SESSION_COOKIE } from "@/lib/session";
-import { saveProfile } from "@/lib/store";
-import { LearnerProfile, LearningFocus, NativeLanguage, ProficiencyLevel, TargetLanguage } from "@/lib/types";
+import { completeLesson } from "@/lib/store";
 
 export async function POST(request: Request) {
-  const body = (await request.json()) as Record<string, string>;
+  const body = (await request.json()) as { lessonId?: string };
+
+  if (!body.lessonId) {
+    return NextResponse.json({ error: "lessonId is required" }, { status: 400 });
+  }
+
   let sessionId: string | null = null;
 
   if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
@@ -22,15 +26,7 @@ export async function POST(request: Request) {
     request.headers.get("cookie")?.match(new RegExp(`${APP_SESSION_COOKIE}=([^;]+)`))?.[1] ??
     "local-demo";
 
-  const profile: LearnerProfile = {
-    targetLanguage: body.targetLanguage as TargetLanguage,
-    nativeLanguage: body.nativeLanguage as NativeLanguage,
-    level: body.level as ProficiencyLevel,
-    dailyMinutes: Number(body.dailyMinutes),
-    focus: body.focus as LearningFocus
-  };
+  const result = await completeLesson(sessionId, body.lessonId);
 
-  await saveProfile(sessionId, profile);
-
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, ...result });
 }

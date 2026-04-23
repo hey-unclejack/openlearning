@@ -47,6 +47,36 @@ Without these env vars, the app falls back to a local in-memory store keyed by a
 - The auth pages are placeholders and intended to be replaced with Supabase Auth.
 - The API surface is already separated so persistence can be swapped in later.
 
+## Design System
+
+### Core controls
+
+- Primary action uses `.button`
+- Secondary page-level action uses `.button-secondary`
+- Low-emphasis action uses `.ghost-button`
+- Success and error feedback use the global top-center toast via `ToastNotice`
+
+### Selection patterns
+
+- Step-by-step choices and settings choices should share the same `choice-grid / choice-card` system
+- Do not create a second visual language for settings selectors when the onboarding selector already solves the same problem
+- Settings may tune spacing or sizing, but should stay on top of the same base component and interaction rules
+- Selected state must remain visible through border, surface, and motion, not color alone
+
+### Course content blocks
+
+- Scenario lessons should follow a stable block order: `objective -> vocabulary -> chunks -> dialogue -> coach note -> practice`
+- `eyebrow` marks the block category, while `title` states the task or lesson topic
+- Do not repeat the same meaning in both `eyebrow` and `title`
+- Summary and plan blocks for lessons should continue using the existing `review-card` surface instead of inventing a second lesson card style
+
+### Current implementations
+
+- Onboarding choices in [onboarding-form.tsx](/Users/tws/Projects/openlearning/src/components/onboarding/onboarding-form.tsx)
+- Profile settings language selector in [settings-form.tsx](/Users/tws/Projects/openlearning/src/components/profile/settings-form.tsx)
+- Toast feedback in [toast-notice.tsx](/Users/tws/Projects/openlearning/src/components/ui/toast-notice.tsx)
+- Shared control styles in [globals.css](/Users/tws/Projects/openlearning/src/app/globals.css)
+
 ## Suggested next steps
 
 1. Replace the in-memory store with Supabase/Postgres.
