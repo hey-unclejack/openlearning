@@ -268,6 +268,12 @@ export function getLocaleCopy(locale: AppLocale) {
       unitLabel: isZh
         ? (unitNumber: number, unitTitle: string) => `單元 ${unitNumber} · ${unitTitle}`
         : (unitNumber: number, unitTitle: string) => `Unit ${unitNumber} · ${unitTitle}`,
+      fitLabel: isZh ? "為什麼是這堂課" : "Why this lesson fits now",
+      unitProgressLabel: isZh ? "本單元進度" : "Unit progress",
+      unitProgress: isZh
+        ? (done: number, total: number) => `已完成 ${done} / ${total} 課`
+        : (done: number, total: number) => `${done} / ${total} lessons done`,
+      nextLessonLabel: isZh ? "接下來" : "Up next",
       beforeBegin: isZh ? "開始前提示" : "Before you begin",
       openLesson: isZh ? "打開課程" : "Open lesson",
       weakSpots: isZh ? "弱點區" : "Weak spots",
@@ -331,12 +337,40 @@ export function getLocaleCopy(locale: AppLocale) {
       startReview: isZh ? "開始複習" : "Start review",
       step2: isZh ? "步驟 2" : "Step 2",
       lessonPill: isZh ? "再上新課" : "Then learn",
+      step3: isZh ? "步驟 3" : "Step 3",
+      wrapPill: isZh ? "完成收尾" : "Wrap up",
+      wrapTitle: isZh ? "完成今天這輪學習" : "Close today's learning loop",
+      wrapBody: isZh
+        ? "完成今天這堂課後，重點會被排進明天的複習節奏，讓今天的輸入有後續回收。"
+        : "Once today's lesson is done, its key material will move into tomorrow's review cycle so today's input gets reinforced.",
       dayLabel: isZh ? (dayNumber: number) => `第 ${dayNumber} 天` : (dayNumber: number) => `Day ${dayNumber}`,
       unitLabel: isZh
         ? (unitNumber: number, unitTitle: string) => `單元 ${unitNumber} · ${unitTitle}`
         : (unitNumber: number, unitTitle: string) => `Unit ${unitNumber} · ${unitTitle}`,
+      fitLabel: isZh ? "為什麼安排這堂課" : "Why this lesson is here",
+      unitProgressLabel: isZh ? "本單元進度" : "Unit progress",
+      unitProgress: isZh
+        ? (done: number, total: number) => `已完成 ${done} / ${total} 課`
+        : (done: number, total: number) => `${done} / ${total} lessons done`,
+      nextLessonLabel: isZh ? "接下來" : "Up next",
+      completedEyebrow: isZh ? "已完成一堂課" : "Lesson completed",
+      completedTitle: isZh
+        ? (lessonTitle: string) => `${lessonTitle} 已完成`
+        : (lessonTitle: string) => `${lessonTitle} completed`,
+      completedBody: isZh
+        ? "剛剛這堂課的重點已排入後續複習，接下來繼續今天的學習節奏。"
+        : "The key content from this lesson is now scheduled into review. Continue the flow with today's next step.",
+      unitCompletedBody: isZh
+        ? (unitTitle: string) => `你已完成「${unitTitle}」這個單元，接下來會進入下一個情境主題。`
+        : (unitTitle: string) => `You finished the "${unitTitle}" unit. Next up is a new scenario theme.`,
+      continueNextLesson: isZh ? "直接前往下一課" : "Continue to next lesson",
+      afterFinishLabel: isZh ? "完成後會發生什麼" : "What happens after this",
+      afterFinishBody: isZh
+        ? "今天這堂課的新內容不會立刻回到今天的複習，而是會排到明天早上再進入記憶循環。"
+        : "The new material from this lesson will not bounce back into today's queue. It will enter the memory cycle tomorrow morning.",
       beforeBegin: isZh ? "進課前提示" : "Before you begin",
       noLesson: isZh ? "今天的課程" : "Today's lesson",
+      nextLessonFallback: isZh ? "這一輪完成後，今天就可以收尾。" : "After this round, today can end cleanly.",
       openLesson: isZh ? "打開課程" : "Open lesson"
     },
     reviewPage: {
@@ -358,6 +392,7 @@ export function getLocaleCopy(locale: AppLocale) {
         ? "接下來去完成今日新課程，讓系統明天開始替你安排下一輪複習。"
         : "Continue with today's lesson so the system can schedule the next review cycle.",
       donePill: isZh ? "可回到課程" : "Ready for lesson",
+      returnToToday: isZh ? "返回今日學習" : "Return to Today",
       dueCard: isZh ? "到期卡片" : "Due Card",
       currentCard: isZh ? "目前卡片" : "Current card",
       hint: isZh ? "先在腦中回想，再翻答案。提示：" : "Recall it first, then reveal the answer. Hint: ",
@@ -428,19 +463,117 @@ export function getLocaleCopy(locale: AppLocale) {
       lessonFocus: isZh ? "今日短課" : "Daily lesson",
       todayObjective: isZh ? "今天要學會的重點" : "What to land today",
       lessonIntro: isZh ? "進課前提示" : "Before you begin",
+      fitLabel: isZh ? "這堂課和你的目標怎麼對齊" : "How this aligns with your goal",
       studyFlow: isZh ? "本課節奏" : "Lesson flow",
       flowAbsorb: isZh ? "先吸收今天這堂課的核心語塊和句型。" : "Absorb the core chunks and phrases for this lesson first.",
       flowRecall: isZh ? "接著用對話和練習主動回想，不只是閱讀。" : "Then use dialogue and practice to actively recall, not just read.",
       flowComplete: isZh ? "完成後把重點交給系統，安排進後續複習。" : "Finish the lesson and let the system schedule its key items into review.",
+      unitProgressLabel: isZh ? "本單元進度" : "Unit progress",
+      unitProgress: isZh
+        ? (done: number, total: number) => `已完成 ${done} / ${total} 課`
+        : (done: number, total: number) => `${done} / ${total} lessons done`,
+      nextLessonLabel: isZh ? "下一課預覽" : "Next lesson preview",
+      nextLessonPreview: isZh ? (title: string) => `下一課：${title}` : (title: string) => `Up next: ${title}`,
+      nextLessonFallback: isZh ? "這是這個單元的最後一課。" : "This is the last lesson in this unit.",
+      unitCompletedTitle: isZh ? "單元完成" : "Unit complete",
       vocabulary: isZh ? "單字" : "Vocabulary",
+      vocabularyTitle: isZh ? "先把今天會用到的單字抓穩" : "Lock in today's key vocabulary",
+      vocabularyBody: isZh
+        ? "先認得、先讀順，後面對話和練習才有支點。"
+        : "Recognize and say these first so the dialogue and practice have something solid to build on.",
       chunks: isZh ? "語塊" : "Chunks",
+      chunksTitle: isZh ? "把整段語塊記成可直接使用的片段" : "Treat these chunks as ready-to-use phrases",
+      chunksBody: isZh
+        ? "比起逐字翻譯，先記住整段片語會更容易真正開口。"
+        : "Memorizing the full phrase is more useful here than translating word by word.",
       dialogue: isZh ? "對話" : "Dialogue",
+      dialogueTitle: isZh ? "看一次完整對話怎麼落地" : "See how it lands in a full dialogue",
       coachNote: isZh ? "教練提示" : "Coach note",
+      coachNoteTitle: isZh ? "最後收一個教練提示" : "Take one coach note with you",
       practice: isZh ? "練習" : "Practice",
+      practicePlanTitle: isZh ? "這堂課的練習編排" : "How this lesson's practice is structured",
+      practicePlanBody: isZh
+        ? "系統會先保留核心翻譯，再依你的程度、每日時間和學習目標插入單字、語法、聽力或口說。"
+        : "The system keeps the core translation task first, then layers in vocabulary, grammar, listening, or speaking based on your level, daily time, and goal.",
       practiceQuestionLabel: isZh ? (id: string) => `題目 ${id.replace(/^q/i, "")}` : (id: string) => `Prompt ${id.replace(/^q/i, "")}`,
+      practiceQuestionStepTitle: isZh ? (index: number) => `練習題 ${index}` : (index: number) => `Practice ${index}`,
       promptHint: isZh ? "提示：" : "Hint: ",
+      interactionArrange: isZh ? "點擊組句" : "Tap to build",
+      interactionType: isZh ? "打字輸入" : "Type it",
+      interactionSpeak: isZh ? "語音輸入" : "Speak it",
+      interactionArrangeBody: isZh
+        ? "把下方字詞依序點進答案區，組出正確英文句子。"
+        : "Tap the words in order to assemble the correct English sentence.",
+      interactionTapMatch: isZh ? "點擊配對" : "Tap to match",
+      interactionTapMatchBody: isZh ? "從下方選出最符合這個意思的英文答案。" : "Pick the English answer that best matches the meaning below.",
+      interactionListenSelect: isZh ? "聽後選答" : "Listen and choose",
+      interactionListenSelectBody: isZh ? "先播放英文句子，再從選項中選出你聽到的內容。" : "Play the English sentence, then choose the one you heard.",
+      interactionListenTranscribe: isZh ? "聽寫輸入" : "Listen and transcribe",
+      interactionListenTranscribeBody: isZh ? "先聽句子，再把你聽到的英文打出來。" : "Listen to the sentence, then type what you hear.",
+      interactionTypeBody: isZh
+        ? "直接把你想到的英文句子打出來，先輸出，再檢查。"
+        : "Type the English sentence from memory, then check it.",
+      interactionSpeakBody: isZh
+        ? "先開口把英文說出來，再用語音結果確認是否自然正確。"
+        : "Say the sentence out loud first, then use the transcript to check it.",
+      interactionSpeakRepeat: isZh ? "跟讀練習" : "Repeat aloud",
+      interactionSpeakRepeatBody: isZh ? "先聽一句標準版本，再跟著開口重複一次。" : "Listen to the model sentence first, then repeat it aloud.",
+      interactionGuidedWrite: isZh ? "引導寫作" : "Guided writing",
+      interactionGuidedWriteBody: isZh ? "根據下方線索，自己寫出一個完整自然的英文句子。" : "Use the cues below to write a full, natural English sentence.",
+      interactionErrorCorrection: isZh ? "改錯練習" : "Error correction",
+      interactionErrorCorrectionBody: isZh ? "先讀這句不自然或錯誤的版本，再改寫成正確英文。" : "Read the awkward or incorrect sentence first, then rewrite it in correct English.",
+      interactionFillBlank: isZh ? "填空作答" : "Fill the blank",
+      interactionFillBlankBody: isZh ? "先看完整句型，再補上缺少的關鍵字。" : "Look at the full sentence pattern, then fill in the missing key word.",
+      answerBuildLabel: isZh ? "答案區" : "Answer build",
+      answerBuildEmpty: isZh ? "先從下方點選字詞開始組句" : "Start building the sentence from the word bank below",
+      wordBankLabel: isZh ? "字詞庫" : "Word bank",
+      resetBuild: isZh ? "重置組句" : "Reset build",
+      fillBlankLabel: isZh ? "補上空格" : "Fill the blank",
+      fillBlankPlaceholder: isZh ? "輸入缺少的英文單字" : "Type the missing English word",
+      transcribeLabel: isZh ? "聽寫輸入" : "Transcribe what you hear",
+      transcribePlaceholder: isZh ? "輸入你聽到的英文句子" : "Type the sentence you hear",
+      audioPromptLabel: isZh ? "音訊提示" : "Audio prompt",
+      playAudio: isZh ? "播放音訊" : "Play audio",
+      audioUnavailable: isZh ? "目前瀏覽器不支援語音播放。" : "Audio playback is not available in this browser.",
+      listenReadyHint: isZh ? "先播放一次，再開始作答。" : "Play it once first, then answer.",
+      listenPromptTitle: isZh ? "先聽，再作答" : "Listen first, then answer",
+      repeatTargetLabel: isZh ? "跟讀目標句" : "Repeat this sentence",
+      guidedWriteLabel: isZh ? "用線索完成寫作" : "Write from these cues",
+      guidedWritePlaceholder: isZh ? "用完整英文句子表達這個意思" : "Write a full English sentence here",
+      errorCorrectionLabel: isZh ? "把這句改正" : "Fix this sentence",
+      errorCorrectionPlaceholder: isZh ? "改寫成正確自然的英文句子" : "Rewrite it as a correct natural English sentence",
+      startSpeaking: isZh ? "開始錄音" : "Start speaking",
+      stopSpeaking: isZh ? "停止錄音" : "Stop",
+      recording: isZh ? "錄音中..." : "Recording...",
+      spokenResultLabel: isZh ? "語音辨識結果" : "Speech transcript",
+      spokenResultEmpty: isZh ? "開始錄音後，這裡會出現辨識到的英文句子。" : "Your transcript will appear here after you start speaking.",
+      speechUnsupported: isZh ? "目前瀏覽器不支援語音輸入，這題會比較適合改用打字互動。" : "Speech input is not available in this browser, so typing is a better fallback here.",
+      learningTypeLabel: isZh
+        ? (type: string) =>
+            ({
+              "sentence-translation": "學習 type：句型翻譯",
+              vocabulary: "學習 type：單字學習",
+              listening: "學習 type：聽力",
+              speaking: "學習 type：口說",
+              writing: "學習 type：寫作",
+              grammar: "學習 type：語法"
+            })[type] ?? "學習 type：句型翻譯"
+        : (type: string) =>
+            ({
+              "sentence-translation": "Learning type: Sentence translation",
+              vocabulary: "Learning type: Vocabulary",
+              listening: "Learning type: Listening",
+              speaking: "Learning type: Speaking",
+              writing: "Learning type: Writing",
+              grammar: "Learning type: Grammar"
+            })[type] ?? "Learning type: Sentence translation",
       checkAnswer: isZh ? "檢查答案" : "Check answer",
       nextStep: isZh ? "下一步" : "Next step",
+      progressLabel: isZh ? (done: number, total: number) => `課程進度 ${done} / ${total}` : (done: number, total: number) => `Lesson progress ${done} / ${total}`,
+      previousTopic: isZh ? "上一個主題" : "Previous topic",
+      nextTopic: isZh ? "下一個主題" : "Next topic",
+      completeStepTitle: isZh ? "完成這堂課並交給系統排進複習" : "Finish this lesson and pass it into review",
+      reviewOnlyTitle: isZh ? "這堂課目前只供瀏覽" : "This lesson is view-only right now",
       completeBody: isZh
         ? "這堂課完成後，系統會把重點內容轉成後續複習卡片，並排入下一輪節奏。"
         : "Finish this lesson and the system will turn its key content into review cards for the next cycle.",

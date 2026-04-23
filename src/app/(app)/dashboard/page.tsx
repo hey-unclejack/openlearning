@@ -11,6 +11,10 @@ export default async function DashboardPage() {
   const snapshot = await getDashboardSnapshot(sessionId);
   const locale = await getLocale();
   const copy = getLocaleCopy(locale);
+  const unitLessons = snapshot.unit?.lessons ?? [];
+  const currentIndex = snapshot.courseLesson ? unitLessons.findIndex((item) => item.id === snapshot.courseLesson?.id) : -1;
+  const nextLesson = currentIndex >= 0 ? unitLessons[currentIndex + 1] : undefined;
+  const completedInUnit = currentIndex >= 0 ? currentIndex : 0;
 
   return (
     <AppShell activePath="/dashboard" locale={locale} userEmail={user?.email}>
@@ -57,6 +61,19 @@ export default async function DashboardPage() {
             </div>
             <h2 className="section-title">{snapshot.planDay.title}</h2>
             <p className="subtle">{snapshot.planDay.objective}</p>
+            {snapshot.unit ? (
+              <div className="muted-box dashboard-lesson-fit">
+                <div className="eyebrow">{copy.dashboard.fitLabel}</div>
+                <p className="subtle">{snapshot.unit.summary}</p>
+                <p className="subtle">{snapshot.lesson.personalizationNote}</p>
+                <p className="subtle">{copy.dashboard.unitProgress(completedInUnit, unitLessons.length)}</p>
+                {nextLesson ? (
+                  <p className="subtle">
+                    {copy.dashboard.nextLessonLabel} {nextLesson.title}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
             <div className="muted-box dashboard-lesson-note">
               <div className="eyebrow">{copy.dashboard.beforeBegin}</div>
               <p className="subtle">{snapshot.lesson.intro}</p>

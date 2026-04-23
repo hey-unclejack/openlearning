@@ -284,8 +284,10 @@ export async function getTodayLesson(sessionId: string) {
   const state = await readState(sessionId);
   const planDay = state.plan.find((item) => item.dayNumber === state.currentDay) ?? state.plan[0];
   const lesson = state.lessons[planDay.lessonId];
+  const unit = state.courseTrack.units.find((item) => item.id === planDay.unitId);
+  const courseLesson = unit?.lessons.find((item) => item.id === planDay.lessonId);
 
-  return { planDay, lesson };
+  return { planDay, lesson, unit, courseLesson };
 }
 
 export async function completeLesson(sessionId: string, lessonId: string) {
@@ -296,7 +298,10 @@ export async function completeLesson(sessionId: string, lessonId: string) {
   if (!today || today.lessonId !== lessonId || !state.profile) {
     return {
       currentDay: state.currentDay,
-      nextLessonId: today?.lessonId
+      nextLessonId: today?.lessonId,
+      completedLessonTitle: undefined,
+      completedUnitTitle: undefined,
+      unitCompleted: false
     };
   }
 
@@ -304,6 +309,10 @@ export async function completeLesson(sessionId: string, lessonId: string) {
   if (!courseLesson) {
     throw new Error("Lesson not found");
   }
+  const currentUnit = state.courseTrack.units.find((item) => item.id === today.unitId);
+  const currentUnitLessons = currentUnit?.lessons ?? [];
+  const currentUnitIndex = currentUnitLessons.findIndex((item) => item.id === lessonId);
+  const unitCompleted = currentUnitIndex >= 0 && currentUnitIndex === currentUnitLessons.length - 1;
 
   const newReviewItems = buildReviewItemsForLesson(courseLesson).filter(
     (item) => !state.reviewItems.some((existing) => existing.id === item.id)
@@ -320,7 +329,10 @@ export async function completeLesson(sessionId: string, lessonId: string) {
     replaceLocalState(sessionId, nextState);
     return {
       currentDay: nextState.currentDay,
-      nextLessonId: nextPlanDay?.lessonId
+      nextLessonId: nextPlanDay?.lessonId,
+      completedLessonTitle: courseLesson.title,
+      completedUnitTitle: currentUnit?.title,
+      unitCompleted
     };
   }
 
@@ -356,7 +368,10 @@ export async function completeLesson(sessionId: string, lessonId: string) {
 
   return {
     currentDay: nextState.currentDay,
-    nextLessonId: nextPlanDay?.lessonId
+    nextLessonId: nextPlanDay?.lessonId,
+    completedLessonTitle: courseLesson.title,
+    completedUnitTitle: currentUnit?.title,
+    unitCompleted
   };
 }
 

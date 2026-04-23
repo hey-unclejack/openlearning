@@ -1,9 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { scoreToLabel } from "@/lib/srs";
 import { ReviewGrade, ReviewItem } from "@/lib/types";
 import { startTransition, useState } from "react";
 import { AppLocale, getLocaleCopy } from "@/lib/i18n";
+import { StudySessionShell } from "@/components/study/study-session-shell";
 import { ToastNotice } from "@/components/ui/toast-notice";
 
 const grades: ReviewGrade[] = ["again", "hard", "good", "easy"];
@@ -51,45 +53,62 @@ export function ReviewTrainer({ initialItems, locale }: { initialItems: ReviewIt
 
   if (!current) {
     return (
-      <div className="review-card review-finish-card">
-        <div className="review-summary-head">
-          <div className="eyebrow">{copy.reviewPage.reviewDone}</div>
-          <span className="pill lesson-meta-pill-secondary">{copy.reviewPage.donePill}</span>
+      <StudySessionShell
+        description={copy.reviewPage.body}
+        exitHref="/study/today"
+        exitLabel={copy.reviewPage.back}
+        eyebrow={copy.reviewPage.eyebrow}
+        progressCurrent={totalCount}
+        progressLabel={copy.reviewPage.progressLabel(totalCount, Math.max(totalCount, 1))}
+        progressTotal={Math.max(totalCount, 1)}
+        title={copy.reviewPage.title}
+      >
+        <ToastNotice message={status} tone={statusTone} />
+        <div className="study-topic-card review-finish-card">
+          <div className="study-topic-stack">
+            <div className="eyebrow">{copy.reviewPage.reviewDone}</div>
+            <h2 className="study-topic-title">{copy.reviewPage.reviewDoneTitle}</h2>
+            <p className="study-topic-body">{copy.reviewPage.reviewDoneBody}</p>
+          </div>
+          <div className="study-topic-actions">
+            <Link className="button" href="/study/today">
+              {copy.reviewPage.returnToToday}
+            </Link>
+          </div>
         </div>
-        <h2 className="section-title">{copy.reviewPage.reviewDoneTitle}</h2>
-        <p className="subtle">{copy.reviewPage.reviewDoneBody}</p>
-      </div>
+      </StudySessionShell>
     );
   }
 
   return (
-    <div className="stack review-trainer-stack">
+    <StudySessionShell
+      description={copy.reviewPage.body}
+      exitHref="/study/today"
+      exitLabel={copy.reviewPage.back}
+      eyebrow={copy.reviewPage.eyebrow}
+      progressCurrent={totalCount - items.length + 1}
+      progressLabel={copy.reviewPage.progressLabel(totalCount - items.length + 1, totalCount)}
+      progressTotal={totalCount}
+      title={copy.reviewPage.title}
+    >
       <ToastNotice message={status} tone={statusTone} />
-      <div className="review-card review-session-card">
-        <div className="review-card-topline">
+      <div className="study-topic-card review-session-card">
+        <div className="study-topic-stack">
           <div className="eyebrow">{copy.reviewPage.currentCard}</div>
-          <span className="pill">{copy.reviewPage.progressLabel(totalCount - items.length + 1, totalCount)}</span>
+          <h2 className="study-topic-title">{current.front}</h2>
+          <p className="study-topic-body">
+            {copy.reviewPage.hint}
+            {current.hint}
+          </p>
         </div>
-        <h2 className="section-title">{current.front}</h2>
-        <p className="subtle">
-          {copy.reviewPage.hint}
-          {current.hint}
-        </p>
         {showBack ? (
-          <div className="muted-box review-answer-box">
+          <div className="study-topic-feedback review-answer-box">
             <div className="eyebrow">{copy.reviewPage.answerLabel}</div>
             <strong>{current.back}</strong>
           </div>
         ) : null}
-        <div className="button-row review-action-row">
-          {!showBack ? (
-            <button className="button" onClick={() => setShowBack(true)} type="button">
-              {copy.reviewPage.showAnswer}
-            </button>
-          ) : null}
-        </div>
         {showBack ? (
-          <div className="stack review-grade-stack">
+          <div className="study-topic-stack review-grade-stack">
             <div className="eyebrow">{copy.reviewPage.gradingLabel}</div>
             <div className="review-grade-grid">
               {grades.map((grade) => (
@@ -106,8 +125,14 @@ export function ReviewTrainer({ initialItems, locale }: { initialItems: ReviewIt
             </div>
           </div>
         ) : null}
+        <div className="study-topic-actions">
+          {!showBack ? (
+            <button className="button" onClick={() => setShowBack(true)} type="button">
+              {copy.reviewPage.showAnswer}
+            </button>
+          ) : null}
+        </div>
       </div>
-      <div className="subtle review-remaining-text">{copy.reviewPage.remaining(items.length)}</div>
-    </div>
+    </StudySessionShell>
   );
 }

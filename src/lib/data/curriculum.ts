@@ -9,7 +9,8 @@ import {
   LessonReviewSeed,
   PracticeQuestion,
   ReviewItem,
-  StudyPlanDay
+  StudyPlanDay,
+  LearningType
 } from "@/lib/types";
 
 type BaseLesson = {
@@ -22,6 +23,7 @@ type BaseLesson = {
   intro: string;
   coachingNote: string;
   practice: Array<{
+    learningType?: LearningType;
     prompt: string;
     answer: string;
     hint: string;
@@ -835,15 +837,51 @@ function buildLessonAsset(
         ? "先把整句說順，再替換少量資訊。"
         : profile.level === "B1"
           ? "先完整表達，再微調語氣和自然度。"
-          : "優先追求自然、流暢和回應速度。";
+        : "優先追求自然、流暢和回應速度。";
 
-  const practice = lesson.practice.map((question, index) => ({
+  const personalizationNote =
+    profile.focus === "work"
+      ? `這堂課會優先往工作溝通的用法靠攏。${profile.dailyMinutes >= 30 ? "今天的練習量也會多一點，讓你把句子用在更新、協調和會議場景。" : "先抓最能直接搬到工作場景的句子。"}`
+      : profile.focus === "daily"
+        ? `這堂課會優先往日常互動的用法靠攏。${profile.dailyMinutes <= 10 ? "今天先穩住最常用的一句到兩句。" : "重點是把句子練到能自然接在真實對話裡。"}`
+        : profile.focus === "travel"
+          ? `這堂課會優先往旅行與移動情境的用法靠攏。${unit.stage === "mobility" ? "這一單元和你目前的目標直接對齊，先把高頻求助與應對句講穩。" : "先把能在外出時直接用上的句子講穩。"}`
+          : `這堂課會優先往系統化練習的方式靠攏。${profile.level === "A1" || profile.level === "A2" ? "先穩定記住完整句型，再擴展變化。" : "除了記住句型，也會多放一點輸出挑戰。"}`;
+
+  const basePractice = lesson.practice.map((question, index) => ({
     id: `${lessonId}-practice-${index + 1}`,
+    learningType: question.learningType ?? "sentence-translation",
     prompt: question.prompt,
     answer: question.answer,
     acceptableAnswers: question.acceptableAnswers,
     hint: `${question.hint} ${levelHint}`.trim()
   }));
+
+  const challengePrompt =
+    profile.focus === "work"
+      ? "翻成英文：先把這句講穩，之後你就能直接拿去工作情境使用。"
+      : profile.focus === "daily"
+        ? "翻成英文：把這句練到能在日常互動裡自然接上。"
+        : profile.focus === "travel"
+          ? "翻成英文：把這句想像成你正在移動或求助時會直接開口的版本。"
+          : "翻成英文：把這句當成今天額外加強的高頻句型。";
+
+  const bonusSeed = lesson.reviewSeeds[lesson.reviewSeeds.length - 1];
+  const practice =
+    profile.dailyMinutes <= 10
+      ? basePractice.slice(0, 1)
+      : profile.dailyMinutes >= 30
+        ? [
+            ...basePractice,
+            {
+              id: `${lessonId}-practice-bonus`,
+              learningType: (bonusSeed.tags.includes("grammar") ? "grammar" : "sentence-translation") as LearningType,
+              prompt: challengePrompt.replace("這句", bonusSeed.front),
+              answer: bonusSeed.back,
+              hint: `${bonusSeed.hint} ${levelHint}`.trim()
+            }
+          ]
+        : basePractice;
 
   const reviewSeeds: LessonReviewSeed[] = lesson.reviewSeeds.map((seed, index) => ({
     id: `${lessonId}-review-${index + 1}`,
@@ -858,9 +896,49 @@ function buildLessonAsset(
     unitId: unit.id,
     intro: `${paceLead} ${lesson.intro}`,
     coachingNote: `${focusLead} ${lesson.coachingNote}`,
+    personalizationNote,
     practice,
     reviewSeeds
   };
+}
+
+function personalizeUnitSummary(unit: BaseUnit, profile: LearnerProfile) {
+  const focusTail =
+    profile.focus === "work"
+      ? "Frame it like communication you could reuse in meetings, updates, or coordination."
+      : profile.focus === "daily"
+        ? "Keep it useful for everyday interaction and short real-life exchanges."
+        : profile.focus === "travel"
+          ? "Treat it as practical language for moving through real travel situations."
+          : "Use it as a structured high-frequency pattern set you can review repeatedly.";
+
+  return `${unit.summary} ${focusTail}`;
+}
+
+function personalizeLessonObjective(unit: BaseUnit, lesson: BaseLesson, profile: LearnerProfile) {
+  const focusLead =
+    profile.focus === "work"
+      ? "Prioritize wording you could reuse in professional situations. "
+      : profile.focus === "daily"
+        ? "Prioritize natural responses for everyday conversations. "
+        : profile.focus === "travel"
+          ? "Prioritize fast, useful responses for real movement and help-seeking situations. "
+          : "Prioritize stable sentence patterns you can recall under review. ";
+
+  const levelTail =
+    profile.level === "A1"
+      ? "Keep the target small and repeat the full sentence as-is."
+      : profile.level === "A2"
+        ? "Land the full sentence first, then swap in one or two details."
+        : profile.level === "B1"
+          ? "Aim for a complete response with smoother follow-up."
+          : "Aim for a more natural, faster response with better phrasing.";
+
+  if (unit.stage === "work" && profile.focus !== "work") {
+    return `${lesson.objective} ${focusLead}${levelTail}`;
+  }
+
+  return `${focusLead}${lesson.objective} ${levelTail}`;
 }
 
 export function buildCourseTrack(profile: LearnerProfile): CourseTrack {
@@ -871,7 +949,7 @@ export function buildCourseTrack(profile: LearnerProfile): CourseTrack {
     unitNumber: unit.unitNumber,
     stage: unit.stage,
     title: unit.title,
-    summary: unit.summary,
+    summary: personalizeUnitSummary(unit, profile),
     lessons: unit.lessons.map((lesson) => {
       const lessonId = `${unit.id}-lesson-${lesson.lessonNumber}`;
       const courseLesson: CourseLesson = {
@@ -880,7 +958,7 @@ export function buildCourseTrack(profile: LearnerProfile): CourseTrack {
         lessonNumber: lesson.lessonNumber,
         dayNumber: dayNumber++,
         title: lesson.title,
-        objective: lesson.objective,
+        objective: personalizeLessonObjective(unit, lesson, profile),
         vocabulary: lesson.vocabulary,
         chunks: lesson.chunks,
         dialogue: lesson.dialogue,
@@ -924,6 +1002,10 @@ export function buildLessonMap(track: CourseTrack): Record<string, LessonAsset> 
 }
 
 export function buildReviewItemsForLesson(lesson: CourseLesson, now = new Date()): ReviewItem[] {
+  const dueDate = new Date(now);
+  dueDate.setDate(dueDate.getDate() + 1);
+  dueDate.setHours(6, 0, 0, 0);
+
   return lesson.asset.reviewSeeds.map((seed) => ({
     id: seed.id,
     front: seed.front,
@@ -934,7 +1016,7 @@ export function buildReviewItemsForLesson(lesson: CourseLesson, now = new Date()
     intervalDays: 0,
     repetitionCount: 0,
     lapseCount: 0,
-    dueDate: now.toISOString()
+    dueDate: dueDate.toISOString()
   }));
 }
 

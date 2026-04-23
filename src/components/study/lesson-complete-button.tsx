@@ -30,13 +30,34 @@ export function LessonCompleteButton({ lessonId, locale }: { lessonId: string; l
             body: JSON.stringify({ lessonId })
           })
             .then(async (response) => {
-              const payload = (await response.json()) as { ok?: boolean; error?: string };
+              const payload = (await response.json()) as {
+                ok?: boolean;
+                error?: string;
+                nextLessonId?: string;
+                completedLessonTitle?: string;
+                completedUnitTitle?: string;
+                unitCompleted?: boolean;
+              };
               if (!response.ok || !payload.ok) {
                 throw new Error(payload.error || copy.lesson.completeError);
               }
 
+              const nextUrl = new URL("/study/today", window.location.origin);
+              if (payload.completedLessonTitle) {
+                nextUrl.searchParams.set("completedLesson", payload.completedLessonTitle);
+              }
+              if (payload.completedUnitTitle) {
+                nextUrl.searchParams.set("completedUnit", payload.completedUnitTitle);
+              }
+              if (payload.nextLessonId) {
+                nextUrl.searchParams.set("nextLessonId", payload.nextLessonId);
+              }
+              if (payload.unitCompleted) {
+                nextUrl.searchParams.set("unitCompleted", "1");
+              }
+
               startTransition(() => {
-                router.push("/study/today");
+                router.push(`${nextUrl.pathname}${nextUrl.search}`);
                 router.refresh();
               });
             })

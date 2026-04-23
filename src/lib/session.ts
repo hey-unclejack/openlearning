@@ -1,5 +1,6 @@
 import { headers } from "next/headers";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { APP_PERFORMANCE_COOKIE, parseLearningPerformanceCookie } from "@/lib/practice-performance";
 
 export const APP_SESSION_COOKIE = "openlearning_session_id";
 export const APP_SESSION_HEADER = "x-openlearning-session-id";
@@ -56,4 +57,10 @@ export async function getCurrentUser() {
   } = await supabase.auth.getUser();
 
   return user;
+}
+
+export async function getLearningPerformanceFromHeaders() {
+  const headerStore = await headers();
+  const cookieValue = headerStore.get("cookie")?.match(new RegExp(`${APP_PERFORMANCE_COOKIE}=([^;]+)`))?.[1];
+  return parseLearningPerformanceCookie(cookieValue);
 }

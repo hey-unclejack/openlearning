@@ -3,6 +3,24 @@ export type TargetLanguage = "english";
 export type NativeLanguage = "zh-TW";
 export type LearningFocus = "travel" | "daily" | "work" | "exam";
 export type CourseStage = "foundation" | "mobility" | "daily" | "work";
+export type LearningType =
+  | "sentence-translation"
+  | "vocabulary"
+  | "listening"
+  | "speaking"
+  | "writing"
+  | "grammar";
+export type InteractionType =
+  | "tap-assemble"
+  | "type-translation"
+  | "speech-translation"
+  | "tap-match"
+  | "listen-select"
+  | "listen-transcribe"
+  | "speak-repeat"
+  | "guided-write"
+  | "fill-in-blank"
+  | "error-correction";
 
 export type ReviewGrade = "again" | "hard" | "good" | "easy";
 
@@ -36,12 +54,29 @@ export interface LessonReviewSeed {
   tags: string[];
 }
 
+export interface PracticeQuestionMeta {
+  sourceText?: string;
+  clozeTarget?: string;
+  options?: string[];
+  referenceParts?: string[];
+  incorrectText?: string;
+}
+
+export interface LearningPerformanceStat {
+  attempts: number;
+  correct: number;
+}
+
+export type LearningPerformance = Partial<Record<LearningType, LearningPerformanceStat>>;
+
 export interface PracticeQuestion {
   id: string;
+  learningType?: LearningType;
   prompt: string;
   answer: string;
   hint: string;
   acceptableAnswers?: string[];
+  meta?: PracticeQuestionMeta;
 }
 
 export interface LessonAsset {
@@ -49,6 +84,7 @@ export interface LessonAsset {
   unitId: string;
   intro: string;
   coachingNote: string;
+  personalizationNote: string;
   practice: PracticeQuestion[];
   reviewSeeds: LessonReviewSeed[];
 }

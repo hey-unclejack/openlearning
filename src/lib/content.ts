@@ -15,6 +15,8 @@ interface DashboardSnapshot {
   retentionScore: number;
   planDay: Awaited<ReturnType<typeof getTodayLesson>>["planDay"];
   lesson: Awaited<ReturnType<typeof getTodayLesson>>["lesson"];
+  unit: Awaited<ReturnType<typeof getTodayLesson>>["unit"];
+  courseLesson: Awaited<ReturnType<typeof getTodayLesson>>["courseLesson"];
   recentLogs: ReviewLog[];
 }
 
@@ -22,7 +24,7 @@ export async function getDashboardSnapshot(sessionId: string): Promise<Dashboard
   const state = await readState(sessionId);
   const stats = deriveStats(state);
   const retentionScore = deriveRetentionScore(state);
-  const { planDay, lesson } = await getTodayLesson(sessionId);
+  const { planDay, lesson, unit, courseLesson } = await getTodayLesson(sessionId);
 
   return {
     profile: state.profile,
@@ -30,6 +32,8 @@ export async function getDashboardSnapshot(sessionId: string): Promise<Dashboard
     retentionScore,
     planDay,
     lesson,
+    unit,
+    courseLesson,
     recentLogs: state.reviewLogs.slice(0, 5)
   };
 }
