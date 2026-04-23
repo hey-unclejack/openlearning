@@ -2,8 +2,9 @@ import Link from "next/link";
 import { AppShell } from "@/components/layout/app-shell";
 import { getLocaleCopy } from "@/lib/i18n";
 import { getLocale } from "@/lib/i18n-server";
+import { getWeakLearningTypes } from "@/lib/practice-performance";
 import { getTodayLesson, getDueReviewItems } from "@/lib/store";
-import { getCurrentUser, getSessionIdFromHeaders } from "@/lib/session";
+import { getCurrentUser, getLearningPerformanceFromHeaders, getSessionIdFromHeaders } from "@/lib/session";
 
 export default async function TodayPage({
   searchParams
@@ -17,6 +18,7 @@ export default async function TodayPage({
 }) {
   const sessionId = await getSessionIdFromHeaders();
   const user = await getCurrentUser();
+  const learningPerformance = await getLearningPerformanceFromHeaders();
   const dueItems = await getDueReviewItems(sessionId);
   const { lesson, planDay, unit, courseLesson } = await getTodayLesson(sessionId);
   const locale = await getLocale();
@@ -26,6 +28,7 @@ export default async function TodayPage({
   const currentIndex = courseLesson ? unitLessons.findIndex((item) => item.id === courseLesson.id) : -1;
   const nextLesson = currentIndex >= 0 ? unitLessons[currentIndex + 1] : undefined;
   const completedInUnit = currentIndex >= 0 ? currentIndex : 0;
+  const weakTypes = getWeakLearningTypes(learningPerformance).slice(0, 2);
 
   return (
     <AppShell activePath="/study/today" locale={locale} userEmail={user?.email}>
@@ -88,6 +91,17 @@ export default async function TodayPage({
                 <p className="subtle">{unit.summary}</p>
                 <p className="subtle">{lesson.personalizationNote}</p>
                 <p className="subtle">{copy.todayPage.unitProgress(completedInUnit, unitLessons.length)}</p>
+                <div className="today-focus-list">
+                  <div className="eyebrow">{copy.todayPage.todayBoostLabel}</div>
+                  <p className="subtle">{copy.todayPage.todayBoostBody}</p>
+                  <div className="today-focus-pills">
+                    {weakTypes.map((type) => (
+                      <span key={type} className="pill lesson-meta-pill-secondary">
+                        {copy.todayPage.learningTypeLabel(type)}
+                      </span>
+                    ))}
+                  </div>
+                </div>
                 {nextLesson ? (
                   <p className="subtle">
                     {copy.todayPage.nextLessonLabel} {nextLesson.title}

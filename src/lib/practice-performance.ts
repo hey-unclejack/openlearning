@@ -74,3 +74,17 @@ export function getWeakLearningTypes(performance: LearningPerformance) {
     .sort((a, b) => a.score - b.score)
     .map((item) => item.learningType);
 }
+
+export function getLearningPerformanceRows(performance: LearningPerformance) {
+  return learningTypes.map((learningType) => {
+    const stat = performance[learningType] ?? { attempts: 0, correct: 0 };
+    const accuracy = stat.attempts > 0 ? stat.correct / stat.attempts : 0;
+
+    return {
+      learningType,
+      attempts: stat.attempts,
+      correct: stat.correct,
+      accuracy
+    };
+  });
+}

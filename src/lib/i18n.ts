@@ -321,6 +321,33 @@ export function getLocaleCopy(locale: AppLocale) {
       daySuffix: isZh ? "天" : "",
       weaknessTrend: isZh ? "弱點趨勢" : "Weakness trend",
       memoryWatch: isZh ? "目前需要多看一眼的內容" : "What still needs attention",
+      skillProfile: isZh ? "能力分布" : "Skill profile",
+      skillProfileTitle: isZh ? "各學習類型目前的表現" : "Current performance by learning type",
+      attemptsLabel: isZh ? "作答次數" : "Attempts",
+      accuracyLabel: isZh ? "正確率" : "Accuracy",
+      weakFocusTitle: isZh ? "目前最需要補強的能力" : "Most needed skill right now",
+      weakFocusBody: isZh
+        ? "系統會根據這些表現，在後續課程中多補一點相關題型。"
+        : "The system uses these results to add more of the skill types that need reinforcement.",
+      learningTypeLabel: isZh
+        ? (type: string) =>
+            ({
+              "sentence-translation": "句型翻譯",
+              vocabulary: "單字學習",
+              listening: "聽力",
+              speaking: "口說",
+              writing: "寫作",
+              grammar: "語法"
+            })[type] ?? "句型翻譯"
+        : (type: string) =>
+            ({
+              "sentence-translation": "Sentence translation",
+              vocabulary: "Vocabulary",
+              listening: "Listening",
+              speaking: "Speaking",
+              writing: "Writing",
+              grammar: "Grammar"
+            })[type] ?? "Sentence translation",
       interval: isZh ? "間隔" : "interval",
       dayUnit: isZh ? "天" : "day(s)",
       lapses: isZh ? "失誤次數" : "lapses"
@@ -348,6 +375,29 @@ export function getLocaleCopy(locale: AppLocale) {
         ? (unitNumber: number, unitTitle: string) => `單元 ${unitNumber} · ${unitTitle}`
         : (unitNumber: number, unitTitle: string) => `Unit ${unitNumber} · ${unitTitle}`,
       fitLabel: isZh ? "為什麼安排這堂課" : "Why this lesson is here",
+      todayBoostLabel: isZh ? "今天會多補的能力" : "Today's extra focus",
+      todayBoostBody: isZh
+        ? "系統會根據你最近各學習類型的表現，對弱項多補一點練習。"
+        : "The system adds more practice for the skill types you've struggled with recently.",
+      learningTypeLabel: isZh
+        ? (type: string) =>
+            ({
+              "sentence-translation": "句型翻譯",
+              vocabulary: "單字學習",
+              listening: "聽力",
+              speaking: "口說",
+              writing: "寫作",
+              grammar: "語法"
+            })[type] ?? "句型翻譯"
+        : (type: string) =>
+            ({
+              "sentence-translation": "Sentence translation",
+              vocabulary: "Vocabulary",
+              listening: "Listening",
+              speaking: "Speaking",
+              writing: "Writing",
+              grammar: "Grammar"
+            })[type] ?? "Sentence translation",
       unitProgressLabel: isZh ? "本單元進度" : "Unit progress",
       unitProgress: isZh
         ? (done: number, total: number) => `已完成 ${done} / ${total} 課`

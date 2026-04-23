@@ -2,18 +2,22 @@ import { AppShell } from "@/components/layout/app-shell";
 import { getDashboardSnapshot } from "@/lib/content";
 import { getLocaleCopy } from "@/lib/i18n";
 import { getLocale } from "@/lib/i18n-server";
+import { getLearningPerformanceRows, getWeakLearningTypes } from "@/lib/practice-performance";
 import { readState } from "@/lib/store";
-import { getCurrentUser, getSessionIdFromHeaders } from "@/lib/session";
+import { getCurrentUser, getLearningPerformanceFromHeaders, getSessionIdFromHeaders } from "@/lib/session";
 
 export default async function ProgressPage() {
   const sessionId = await getSessionIdFromHeaders();
   const user = await getCurrentUser();
+  const learningPerformance = await getLearningPerformanceFromHeaders();
   const snapshot = await getDashboardSnapshot(sessionId);
   const state = await readState(sessionId);
   const locale = await getLocale();
   const copy = getLocaleCopy(locale);
   const currentPlanDay = state.plan.find((item) => item.dayNumber === state.currentDay) ?? state.plan[0];
   const currentLesson = currentPlanDay ? state.lessons[currentPlanDay.lessonId] : undefined;
+  const performanceRows = getLearningPerformanceRows(learningPerformance);
+  const weakestType = getWeakLearningTypes(learningPerformance)[0];
 
   return (
     <AppShell activePath="/progress" locale={locale} userEmail={user?.email}>
@@ -116,6 +120,33 @@ export default async function ProgressPage() {
                   </article>
                 );
               })}
+            </div>
+          </div>
+          <div className="review-card progress-weak-card">
+            <div className="eyebrow">{copy.progress.skillProfile}</div>
+            <h3 className="section-title">{copy.progress.skillProfileTitle}</h3>
+            <div className="progress-skill-list">
+              {performanceRows.map((row) => (
+                <div key={row.learningType} className="progress-skill-card">
+                  <div className="progress-skill-head">
+                    <strong>{copy.progress.learningTypeLabel(row.learningType)}</strong>
+                    <span className="progress-unit-count">{copy.progress.accuracyLabel} {Math.round(row.accuracy * 100)}%</span>
+                  </div>
+                  <div className="progress-bar" aria-hidden="true">
+                    <div className="progress-bar-fill" style={{ width: `${Math.round(row.accuracy * 100)}%` }} />
+                  </div>
+                  <div className="subtle">
+                    {copy.progress.attemptsLabel} {row.attempts}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="muted-box progress-current-note">
+              <div className="eyebrow">{copy.progress.weakFocusTitle}</div>
+              <p className="subtle">{copy.progress.weakFocusBody}</p>
+              <span className="pill lesson-meta-pill-secondary">
+                {copy.progress.learningTypeLabel(weakestType)}
+              </span>
             </div>
           </div>
           <div className="review-card progress-weak-card">
