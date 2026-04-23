@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { scoreToLabel } from "@/lib/srs";
-import { ReviewGrade, ReviewItem } from "@/lib/types";
+import { LearningType, ReviewGrade, ReviewItem } from "@/lib/types";
 import { startTransition, useState } from "react";
 import { AppLocale, getLocaleCopy } from "@/lib/i18n";
 import { StudySessionShell } from "@/components/study/study-session-shell";
@@ -10,7 +10,15 @@ import { ToastNotice } from "@/components/ui/toast-notice";
 
 const grades: ReviewGrade[] = ["again", "hard", "good", "easy"];
 
-export function ReviewTrainer({ initialItems, locale }: { initialItems: ReviewItem[]; locale: AppLocale }) {
+export function ReviewTrainer({
+  initialItems,
+  locale,
+  weakTypes
+}: {
+  initialItems: ReviewItem[];
+  locale: AppLocale;
+  weakTypes: LearningType[];
+}) {
   const [items, setItems] = useState(initialItems);
   const [showBack, setShowBack] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
@@ -100,6 +108,19 @@ export function ReviewTrainer({ initialItems, locale }: { initialItems: ReviewIt
             {copy.reviewPage.hint}
             {current.hint}
           </p>
+          <div className="study-topic-support-list">
+            <div className="study-topic-support">
+              <div className="eyebrow">{copy.reviewPage.pressureLabel}</div>
+              <p className="subtle">{copy.reviewPage.pressureBody}</p>
+              <div className="today-focus-pills">
+                {weakTypes.map((type) => (
+                  <span key={type} className="pill lesson-meta-pill-secondary">
+                    {copy.reviewPage.learningTypeLabel(type)}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
         {showBack ? (
           <div className="study-topic-feedback review-answer-box">

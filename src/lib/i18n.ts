@@ -269,6 +269,29 @@ export function getLocaleCopy(locale: AppLocale) {
         ? (unitNumber: number, unitTitle: string) => `單元 ${unitNumber} · ${unitTitle}`
         : (unitNumber: number, unitTitle: string) => `Unit ${unitNumber} · ${unitTitle}`,
       fitLabel: isZh ? "為什麼是這堂課" : "Why this lesson fits now",
+      focusBoostLabel: isZh ? "今天優先補強" : "Today's focus boost",
+      focusBoostBody: isZh
+        ? "系統會依照最近各學習類型的表現，對較弱的能力多補一些互動。"
+        : "The system adds more interaction around the skill types you've struggled with recently.",
+      learningTypeLabel: isZh
+        ? (type: string) =>
+            ({
+              "sentence-translation": "句型翻譯",
+              vocabulary: "單字學習",
+              listening: "聽力",
+              speaking: "口說",
+              writing: "寫作",
+              grammar: "語法"
+            })[type] ?? "句型翻譯"
+        : (type: string) =>
+            ({
+              "sentence-translation": "Sentence translation",
+              vocabulary: "Vocabulary",
+              listening: "Listening",
+              speaking: "Speaking",
+              writing: "Writing",
+              grammar: "Grammar"
+            })[type] ?? "Sentence translation",
       unitProgressLabel: isZh ? "本單元進度" : "Unit progress",
       unitProgress: isZh
         ? (done: number, total: number) => `已完成 ${done} / ${total} 課`
@@ -410,6 +433,14 @@ export function getLocaleCopy(locale: AppLocale) {
       completedBody: isZh
         ? "剛剛這堂課的重點已排入後續複習，接下來繼續今天的學習節奏。"
         : "The key content from this lesson is now scheduled into review. Continue the flow with today's next step.",
+      completedSkillLabel: isZh ? "這堂課練到的能力" : "Skills practiced in this lesson",
+      completedSkillBody: isZh
+        ? "這一輪的互動會依你的程度、目標和近期表現做編排。"
+        : "This round of interactions was arranged around your level, goals, and recent performance.",
+      weakSkillLabel: isZh ? "接下來會多補的能力" : "What gets extra support next",
+      weakSkillBody: isZh
+        ? (label: string) => `接下來的課程與複習會多補一點「${label}」。`
+        : (label: string) => `Upcoming lessons and reviews will add more support for ${label}.`,
       unitCompletedBody: isZh
         ? (unitTitle: string) => `你已完成「${unitTitle}」這個單元，接下來會進入下一個情境主題。`
         : (unitTitle: string) => `You finished the "${unitTitle}" unit. Next up is a new scenario theme.`,
@@ -429,6 +460,29 @@ export function getLocaleCopy(locale: AppLocale) {
       body: isZh
         ? "這裡的體驗刻意保持簡單。先回想，再翻答案，再用四級評分更新間隔。"
         : "This experience is intentionally simple. Recall first, reveal the answer, then update the interval with a four-point score.",
+      pressureLabel: isZh ? "目前記憶壓力" : "Current memory pressure",
+      pressureBody: isZh
+        ? "系統會把複習與後續課程稍微偏向你最近較不穩的能力。"
+        : "The system leans review and upcoming lessons slightly toward the skill types that have been less stable.",
+      learningTypeLabel: isZh
+        ? (type: string) =>
+            ({
+              "sentence-translation": "句型翻譯",
+              vocabulary: "單字學習",
+              listening: "聽力",
+              speaking: "口說",
+              writing: "寫作",
+              grammar: "語法"
+            })[type] ?? "句型翻譯"
+        : (type: string) =>
+            ({
+              "sentence-translation": "Sentence translation",
+              vocabulary: "Vocabulary",
+              listening: "Listening",
+              speaking: "Speaking",
+              writing: "Writing",
+              grammar: "Grammar"
+            })[type] ?? "Sentence translation",
       back: isZh ? "返回今日學習" : "Back to today",
       queueLabel: isZh ? "今日到期" : "Due today",
       queueCount: isZh ? (count: number) => `目前還有 ${count} 張卡片` : (count: number) => `${count} cards in the queue`,

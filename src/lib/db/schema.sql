@@ -82,3 +82,26 @@ create table if not exists review_logs (
 
 create index if not exists review_logs_session_reviewed_idx
   on review_logs (session_id, reviewed_at desc);
+
+create table if not exists learning_performance_stats (
+  id uuid primary key default gen_random_uuid(),
+  session_id text not null,
+  learning_type text not null check (
+    learning_type in (
+      'sentence-translation',
+      'vocabulary',
+      'listening',
+      'speaking',
+      'writing',
+      'grammar'
+    )
+  ),
+  attempts integer not null default 0,
+  correct_count integer not null default 0,
+  created_at timestamptz not null default timezone('utc', now()),
+  updated_at timestamptz not null default timezone('utc', now()),
+  unique (session_id, learning_type)
+);
+
+create index if not exists learning_performance_stats_session_idx
+  on learning_performance_stats (session_id);

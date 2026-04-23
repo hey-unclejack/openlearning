@@ -299,6 +299,7 @@ export async function completeLesson(sessionId: string, lessonId: string) {
     return {
       currentDay: state.currentDay,
       nextLessonId: today?.lessonId,
+      completedLessonId: undefined,
       completedLessonTitle: undefined,
       completedUnitTitle: undefined,
       unitCompleted: false
@@ -330,6 +331,7 @@ export async function completeLesson(sessionId: string, lessonId: string) {
     return {
       currentDay: nextState.currentDay,
       nextLessonId: nextPlanDay?.lessonId,
+      completedLessonId: lessonId,
       completedLessonTitle: courseLesson.title,
       completedUnitTitle: currentUnit?.title,
       unitCompleted
@@ -369,6 +371,7 @@ export async function completeLesson(sessionId: string, lessonId: string) {
   return {
     currentDay: nextState.currentDay,
     nextLessonId: nextPlanDay?.lessonId,
+    completedLessonId: lessonId,
     completedLessonTitle: courseLesson.title,
     completedUnitTitle: currentUnit?.title,
     unitCompleted

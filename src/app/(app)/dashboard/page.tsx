@@ -3,11 +3,13 @@ import { AppShell } from "@/components/layout/app-shell";
 import { getDashboardSnapshot } from "@/lib/content";
 import { getLocaleCopy } from "@/lib/i18n";
 import { getLocale } from "@/lib/i18n-server";
-import { getCurrentUser, getSessionIdFromHeaders } from "@/lib/session";
+import { getWeakLearningTypes } from "@/lib/practice-performance";
+import { getCurrentUser, getLearningPerformanceFromHeaders, getSessionIdFromHeaders } from "@/lib/session";
 
 export default async function DashboardPage() {
   const sessionId = await getSessionIdFromHeaders();
   const user = await getCurrentUser();
+  const learningPerformance = await getLearningPerformanceFromHeaders();
   const snapshot = await getDashboardSnapshot(sessionId);
   const locale = await getLocale();
   const copy = getLocaleCopy(locale);
@@ -15,6 +17,7 @@ export default async function DashboardPage() {
   const currentIndex = snapshot.courseLesson ? unitLessons.findIndex((item) => item.id === snapshot.courseLesson?.id) : -1;
   const nextLesson = currentIndex >= 0 ? unitLessons[currentIndex + 1] : undefined;
   const completedInUnit = currentIndex >= 0 ? currentIndex : 0;
+  const weakTypes = getWeakLearningTypes(learningPerformance).slice(0, 2);
 
   return (
     <AppShell activePath="/dashboard" locale={locale} userEmail={user?.email}>
@@ -67,6 +70,17 @@ export default async function DashboardPage() {
                 <p className="subtle">{snapshot.unit.summary}</p>
                 <p className="subtle">{snapshot.lesson.personalizationNote}</p>
                 <p className="subtle">{copy.dashboard.unitProgress(completedInUnit, unitLessons.length)}</p>
+                <div className="today-focus-list">
+                  <div className="eyebrow">{copy.dashboard.focusBoostLabel}</div>
+                  <p className="subtle">{copy.dashboard.focusBoostBody}</p>
+                  <div className="today-focus-pills">
+                    {weakTypes.map((type) => (
+                      <span key={type} className="pill lesson-meta-pill-secondary">
+                        {copy.dashboard.learningTypeLabel(type)}
+                      </span>
+                    ))}
+                  </div>
+                </div>
                 {nextLesson ? (
                   <p className="subtle">
                     {copy.dashboard.nextLessonLabel} {nextLesson.title}

@@ -2,8 +2,13 @@ import Link from "next/link";
 import { AppShell } from "@/components/layout/app-shell";
 import { getLocaleCopy } from "@/lib/i18n";
 import { getLocale } from "@/lib/i18n-server";
+import {
+  buildDerivedPracticeQuestions,
+  getPracticeLearningTypes,
+  selectPracticePlan
+} from "@/lib/lesson-practice";
 import { getWeakLearningTypes } from "@/lib/practice-performance";
-import { getTodayLesson, getDueReviewItems } from "@/lib/store";
+import { getDueReviewItems, getTodayLesson, readState } from "@/lib/store";
 import { getCurrentUser, getLearningPerformanceFromHeaders, getSessionIdFromHeaders } from "@/lib/session";
 
 export default async function TodayPage({
@@ -11,6 +16,7 @@ export default async function TodayPage({
 }: {
   searchParams: Promise<{
     completedLesson?: string;
+    completedLessonId?: string;
     completedUnit?: string;
     unitCompleted?: string;
     nextLessonId?: string;
@@ -23,12 +29,34 @@ export default async function TodayPage({
   const { lesson, planDay, unit, courseLesson } = await getTodayLesson(sessionId);
   const locale = await getLocale();
   const copy = getLocaleCopy(locale);
-  const { completedLesson, completedUnit, unitCompleted, nextLessonId } = await searchParams;
+  const { completedLesson, completedLessonId, completedUnit, unitCompleted, nextLessonId } = await searchParams;
   const unitLessons = unit?.lessons ?? [];
   const currentIndex = courseLesson ? unitLessons.findIndex((item) => item.id === courseLesson.id) : -1;
   const nextLesson = currentIndex >= 0 ? unitLessons[currentIndex + 1] : undefined;
   const completedInUnit = currentIndex >= 0 ? currentIndex : 0;
   const weakTypes = getWeakLearningTypes(learningPerformance).slice(0, 2);
+  const completedState = completedLessonId ? await readState(sessionId) : null;
+  const completedCourseLesson = completedLessonId
+    ? completedState?.courseTrack.units.flatMap((courseUnit) => courseUnit.lessons).find((item) => item.id === completedLessonId)
+    : undefined;
+  const completedLessonAsset = completedLessonId ? completedState?.lessons[completedLessonId] : undefined;
+  const completedPracticePlan =
+    completedState?.profile && completedCourseLesson && completedLessonAsset
+      ? selectPracticePlan({
+          basePractice: completedLessonAsset.practice,
+          derivedPractice: buildDerivedPracticeQuestions({
+            reviewSeeds: completedLessonAsset.reviewSeeds,
+            chunks: completedCourseLesson.chunks,
+            vocabulary: completedCourseLesson.vocabulary,
+            dialogue: completedCourseLesson.dialogue
+          }),
+          level: completedState.profile.level,
+          focus: completedState.profile.focus,
+          dailyMinutes: completedState.profile.dailyMinutes,
+          performance: learningPerformance
+        })
+      : [];
+  const completedPracticeTypes = getPracticeLearningTypes(completedPracticePlan);
 
   return (
     <AppShell activePath="/study/today" locale={locale} userEmail={user?.email}>
@@ -44,6 +72,27 @@ export default async function TodayPage({
             <div className="eyebrow">{copy.todayPage.completedEyebrow}</div>
             <h2 className="section-title">{copy.todayPage.completedTitle(completedLesson)}</h2>
             <p className="subtle">{copy.todayPage.completedBody}</p>
+            {completedPracticeTypes.length > 0 ? (
+              <div className="muted-box today-complete-unit-box">
+                <div className="eyebrow">{copy.todayPage.completedSkillLabel}</div>
+                <p className="subtle">{copy.todayPage.completedSkillBody}</p>
+                <div className="today-focus-pills">
+                  {completedPracticeTypes.map((type) => (
+                    <span key={type} className="pill lesson-meta-pill-secondary">
+                      {copy.todayPage.learningTypeLabel(type)}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            {weakTypes[0] ? (
+              <div className="muted-box today-complete-unit-box">
+                <div className="eyebrow">{copy.todayPage.weakSkillLabel}</div>
+                <p className="subtle">
+                  {copy.todayPage.weakSkillBody(copy.todayPage.learningTypeLabel(weakTypes[0]))}
+                </p>
+              </div>
+            ) : null}
             {unitCompleted === "1" && completedUnit ? (
               <div className="muted-box today-complete-unit-box">
                 <div className="eyebrow">{copy.lesson.unitCompletedTitle}</div>

@@ -46,6 +46,7 @@ Without these env vars, the app falls back to a local in-memory store keyed by a
 - Without Supabase env vars, data still resets when the server restarts.
 - The auth pages are placeholders and intended to be replaced with Supabase Auth.
 - The API surface is already separated so persistence can be swapped in later.
+- Learning-type performance now persists in `learning_performance_stats`; rerun the schema SQL if your project was created before this table was added.
 
 ## Design System
 

@@ -34,6 +34,7 @@ export function LessonCompleteButton({ lessonId, locale }: { lessonId: string; l
                 ok?: boolean;
                 error?: string;
                 nextLessonId?: string;
+                completedLessonId?: string;
                 completedLessonTitle?: string;
                 completedUnitTitle?: string;
                 unitCompleted?: boolean;
@@ -45,6 +46,9 @@ export function LessonCompleteButton({ lessonId, locale }: { lessonId: string; l
               const nextUrl = new URL("/study/today", window.location.origin);
               if (payload.completedLessonTitle) {
                 nextUrl.searchParams.set("completedLesson", payload.completedLessonTitle);
+              }
+              if (payload.completedLessonId) {
+                nextUrl.searchParams.set("completedLessonId", payload.completedLessonId);
               }
               if (payload.completedUnitTitle) {
                 nextUrl.searchParams.set("completedUnit", payload.completedUnitTitle);
