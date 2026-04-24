@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { AppShell } from "@/components/layout/app-shell";
+import { ReviewPlanningCard } from "@/components/study/review-planning-card";
 import { getLocaleCopy } from "@/lib/i18n";
 import { getLocale } from "@/lib/i18n-server";
 import {
@@ -8,7 +9,7 @@ import {
   selectPracticePlan
 } from "@/lib/lesson-practice";
 import { getWeakLearningTypes } from "@/lib/practice-performance";
-import { getDueReviewItems, getTodayLesson, readState } from "@/lib/store";
+import { getTodayLesson, getTodayReviewPlan, readState } from "@/lib/store";
 import { getCurrentUser, getLearningPerformanceFromHeaders, getSessionIdFromHeaders } from "@/lib/session";
 
 export default async function TodayPage({
@@ -25,7 +26,7 @@ export default async function TodayPage({
   const sessionId = await getSessionIdFromHeaders();
   const user = await getCurrentUser();
   const learningPerformance = await getLearningPerformanceFromHeaders();
-  const dueItems = await getDueReviewItems(sessionId);
+  const reviewPlan = await getTodayReviewPlan(sessionId);
   const { lesson, planDay, unit, courseLesson } = await getTodayLesson(sessionId);
   const locale = await getLocale();
   const copy = getLocaleCopy(locale);
@@ -115,7 +116,23 @@ export default async function TodayPage({
               <span className="pill">{copy.todayPage.reviewPill}</span>
             </div>
             <h2 className="section-title">{copy.todayPage.clearReviews}</h2>
-            <p className="subtle">{copy.todayPage.dueMessage(dueItems.length)}</p>
+            <p className="subtle">{copy.todayPage.dueMessage(reviewPlan.counts.must + reviewPlan.counts.should)}</p>
+            <ReviewPlanningCard
+              body={copy.todayPage.todayBudgetBody(
+                reviewPlan.budget.reviewMinutes,
+                reviewPlan.budget.lessonMinutes,
+                reviewPlan.budget.bufferMinutes
+              )}
+              bucketSummary={{
+                must: copy.todayPage.mustDoLabel(reviewPlan.counts.must, reviewPlan.must.estimatedMinutes),
+                should: copy.todayPage.shouldDoLabel(reviewPlan.counts.should, reviewPlan.should.estimatedMinutes),
+                can: copy.todayPage.canDoLabel(reviewPlan.counts.can, reviewPlan.can.estimatedMinutes),
+              }}
+              className="muted-box today-lesson-fit"
+              locale={locale}
+              title={copy.todayPage.todayBudgetLabel}
+            />
+            <p className="subtle">{copy.todayPage.targetRule}</p>
             <div className="button-row">
               <Link className="button" href="/study/review">
                 {copy.todayPage.startReview}
@@ -140,17 +157,13 @@ export default async function TodayPage({
                 <p className="subtle">{unit.summary}</p>
                 <p className="subtle">{lesson.personalizationNote}</p>
                 <p className="subtle">{copy.todayPage.unitProgress(completedInUnit, unitLessons.length)}</p>
-                <div className="today-focus-list">
-                  <div className="eyebrow">{copy.todayPage.todayBoostLabel}</div>
-                  <p className="subtle">{copy.todayPage.todayBoostBody}</p>
-                  <div className="today-focus-pills">
-                    {weakTypes.map((type) => (
-                      <span key={type} className="pill lesson-meta-pill-secondary">
-                        {copy.todayPage.learningTypeLabel(type)}
-                      </span>
-                    ))}
-                  </div>
-                </div>
+                <ReviewPlanningCard
+                  body={copy.todayPage.todayBoostBody}
+                  className="muted-box today-lesson-fit"
+                  locale={locale}
+                  title={copy.todayPage.todayBoostLabel}
+                  weakTypes={weakTypes}
+                />
                 {nextLesson ? (
                   <p className="subtle">
                     {copy.todayPage.nextLessonLabel} {nextLesson.title}

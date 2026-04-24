@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { LessonPlayer } from "@/components/study/lesson-player";
 import { getLocaleCopy } from "@/lib/i18n";
 import { getLocale } from "@/lib/i18n-server";
-import { readState } from "@/lib/store";
+import { getLessonWarmupItems, readState } from "@/lib/store";
 import { getLearningPerformanceFromHeaders, getSessionIdFromHeaders } from "@/lib/session";
 
 export default async function LessonPage({ params }: { params: Promise<{ lessonId: string }> }) {
@@ -18,6 +18,7 @@ export default async function LessonPage({ params }: { params: Promise<{ lessonI
   const copy = getLocaleCopy(locale);
   const currentPlanDay = state.plan.find((item) => item.dayNumber === state.currentDay) ?? state.plan[0];
   const isCurrentLesson = currentPlanDay?.lessonId === planDay?.lessonId;
+  const warmupItems = await getLessonWarmupItems(sessionId, lessonId);
   const unitLessons = unit?.lessons ?? [];
   const currentIndex = unitLessons.findIndex((item) => item.id === planDay?.lessonId);
   const nextLesson = currentIndex >= 0 ? unitLessons[currentIndex + 1] : undefined;
@@ -38,6 +39,7 @@ export default async function LessonPage({ params }: { params: Promise<{ lessonI
       lessonId={planDay.lessonId}
       lessonTitle={planDay.title}
       locale={locale}
+      warmupItems={warmupItems}
       nextLessonObjective={nextLesson?.objective}
       nextLessonTitle={nextLesson?.title}
       objective={planDay.objective}

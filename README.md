@@ -29,6 +29,8 @@ pnpm install
 pnpm dev
 ```
 
+The local app now starts on [http://localhost:3001](http://localhost:3001) by default.
+
 ## Optional Supabase setup
 
 1. Create a Supabase project.
@@ -40,6 +42,27 @@ pnpm dev
 
 Without these env vars, the app falls back to a local in-memory store keyed by a session cookie.
 
+## Review system migrations
+
+The review system now includes:
+
+- richer `review_items` metadata
+- richer `review_logs` metadata
+- `review_learning_type_summary` view
+- `review_lesson_hotspots` view
+
+If your Supabase project was created before these changes, apply the migration before relying on review analytics or the DB verification script.
+
+1. Add a direct Postgres connection string to `.env.local` as `DATABASE_URL` or `SUPABASE_DB_URL`.
+2. Run:
+
+```bash
+pnpm migrate:review-db
+pnpm verify:review-db
+```
+
+3. If verification fails, follow [review-db-migration-checklist.md](/Users/tws/Projects/openlearning/docs/review-db-migration-checklist.md).
+
 ## Notes
 
 - Supabase integration is designed around anonymous session ids for now; auth can be layered in later.
@@ -47,6 +70,7 @@ Without these env vars, the app falls back to a local in-memory store keyed by a
 - The auth pages are placeholders and intended to be replaced with Supabase Auth.
 - The API surface is already separated so persistence can be swapped in later.
 - Learning-type performance now persists in `learning_performance_stats`; rerun the schema SQL if your project was created before this table was added.
+- `SUPABASE_SERVICE_ROLE_KEY` is enough for app-side repository access, but SQL migrations from this repo also need `DATABASE_URL` or `SUPABASE_DB_URL`.
 
 ## Design System
 
@@ -56,6 +80,8 @@ Without these env vars, the app falls back to a local in-memory store keyed by a
 - Secondary page-level action uses `.button-secondary`
 - Low-emphasis action uses `.ghost-button`
 - Success and error feedback use the global top-center toast via `ToastNotice`
+- Binary feature gates should use a `check-row` control inside a `review-card`; keep the feature name in the `eyebrow` and use the title for current state or outcome
+- Status indicators use `.settings-status-pill`; active state must combine border, surface, and text changes
 
 ### Selection patterns
 
@@ -63,6 +89,11 @@ Without these env vars, the app falls back to a local in-memory store keyed by a
 - Do not create a second visual language for settings selectors when the onboarding selector already solves the same problem
 - Settings may tune spacing or sizing, but should stay on top of the same base component and interaction rules
 - Selected state must remain visible through border, surface, and motion, not color alone
+- Permission groups should reuse `.settings-option-grid / .settings-option` when each item is a compact checkbox setting
+- If a feature gate is off, hide downstream configuration instead of showing disabled controls that cannot be acted on
+- Multi-step settings inside a card should use `.ai-custom-step` sections with a concise step header and existing `choice-card` selectors
+- Provider or service menus should be card-based when the choice changes downstream fields; provider cards should show only provider names unless extra status is required
+- Dynamic model selectors should use a searchable input with a provider-backed option list instead of a free-form text field
 
 ### Course content blocks
 

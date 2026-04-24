@@ -2,6 +2,7 @@ export type ProficiencyLevel = "A1" | "A2" | "B1" | "B2";
 export type TargetLanguage = "english";
 export type NativeLanguage = "zh-TW";
 export type LearningFocus = "travel" | "daily" | "work" | "exam";
+export type SubjectArea = "language" | "math" | "chinese";
 export type CourseStage = "foundation" | "mobility" | "daily" | "work";
 export type LearningType =
   | "sentence-translation"
@@ -23,6 +24,20 @@ export type InteractionType =
   | "error-correction";
 
 export type ReviewGrade = "again" | "hard" | "good" | "easy";
+export type ReviewSessionType = "formal" | "warmup" | "extra" | "diagnostic";
+export type ReviewImportance = "core" | "extension";
+export type ReviewOutcome = ReviewGrade | "unseen";
+export type LearningSourceType = "topic" | "text" | "pdf" | "image" | "url" | "youtube";
+export type AIProviderMode = "official" | "byok" | "oauth";
+export type AIConnectionStatus = "not_configured" | "configured" | "needs_attention";
+export type AIConnectionPreference = "platform" | "custom";
+export type AICustomConnectionMode = "api" | "oauth";
+export type AIApplicationPermission =
+  | "generate_courses"
+  | "auto_search_courses"
+  | "course_optimization"
+  | "learning_optimization";
+export type GeneratedPlanStatus = "draft" | "active" | "completed" | "failed";
 
 export interface LearnerProfile {
   targetLanguage: TargetLanguage;
@@ -89,6 +104,82 @@ export interface LessonAsset {
   reviewSeeds: LessonReviewSeed[];
 }
 
+export interface LearningSource {
+  id: string;
+  type: LearningSourceType;
+  subject: SubjectArea;
+  title: string;
+  rawText: string;
+  sourceUrl?: string;
+  metadata?: Record<string, string | number | boolean>;
+  userOwnsRights: boolean;
+  childMode: boolean;
+  createdAt: string;
+}
+
+export interface GeneratedPlanDay {
+  id: string;
+  lessonId: string;
+  dayNumber: number;
+  title: string;
+  objective: string;
+  vocabulary: string[];
+  chunks: string[];
+  dialogue: string[];
+  asset: LessonAsset;
+  completedAt?: string;
+}
+
+export interface GeneratedLearningPlan {
+  id: string;
+  sourceId: string;
+  subject: SubjectArea;
+  providerMode: AIProviderMode;
+  model: string;
+  level: ProficiencyLevel;
+  focus: LearningFocus;
+  dailyMinutes: number;
+  status: GeneratedPlanStatus;
+  days: GeneratedPlanDay[];
+  qualityWarnings: string[];
+  costEstimateUsd: number;
+  createdAt: string;
+}
+
+export interface AIProviderConnection {
+  id: string;
+  provider: "openai" | "google" | "anthropic" | "openrouter" | "other";
+  mode: AIProviderMode;
+  status: AIConnectionStatus;
+  maskedCredential?: string;
+  encryptedCredential?: string;
+  model?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AISettings {
+  enabled: boolean;
+  permissions: Record<AIApplicationPermission, boolean>;
+  connectionPreference: AIConnectionPreference;
+  customConnectionMode: AICustomConnectionMode;
+  updatedAt?: string;
+}
+
+export interface AIUsageLog {
+  id: string;
+  provider: string;
+  providerMode: AIProviderMode;
+  model: string;
+  sourceId?: string;
+  generatedPlanId?: string;
+  promptTokens: number;
+  completionTokens: number;
+  costEstimateUsd: number;
+  officialQuota: boolean;
+  createdAt: string;
+}
+
 export interface CourseLesson {
   id: string;
   unitId: string;
@@ -124,12 +215,19 @@ export interface ReviewItem {
   back: string;
   hint: string;
   tags: string[];
+  lessonId: string;
+  unitId: string;
+  learningType: LearningType;
+  importance: ReviewImportance;
   easeFactor: number;
   intervalDays: number;
   repetitionCount: number;
   lapseCount: number;
   dueDate: string;
   lastReviewedAt?: string;
+  lastOutcome?: ReviewOutcome;
+  lastConfidence?: number;
+  needsReinforcement?: boolean;
 }
 
 export interface ReviewLog {
@@ -137,6 +235,13 @@ export interface ReviewLog {
   grade: ReviewGrade;
   reviewedAt: string;
   nextDueDate: string;
+  sessionType: ReviewSessionType;
+  confidence?: number;
+  responseMs?: number;
+  lessonId?: string;
+  unitId?: string;
+  learningType?: LearningType;
+  outcome?: "correct" | "incorrect";
 }
 
 export interface AppState {
@@ -149,4 +254,9 @@ export interface AppState {
   lessons: Record<string, LessonAsset>;
   reviewItems: ReviewItem[];
   reviewLogs: ReviewLog[];
+  learningSources: LearningSource[];
+  generatedPlans: GeneratedLearningPlan[];
+  aiSettings: AISettings;
+  aiProviderConnections: AIProviderConnection[];
+  aiUsageLogs: AIUsageLog[];
 }

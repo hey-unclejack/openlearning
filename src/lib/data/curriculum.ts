@@ -1,17 +1,23 @@
 import {
   AppState,
+  AIProviderConnection,
+  AISettings,
   CourseLesson,
   CourseStage,
   CourseTrack,
   CourseUnit,
+  GeneratedLearningPlan,
+  LearningSource,
   LearnerProfile,
   LessonAsset,
   LessonReviewSeed,
   PracticeQuestion,
   ReviewItem,
+  AIUsageLog,
   StudyPlanDay,
   LearningType
 } from "@/lib/types";
+import { normalizeAiSettings } from "@/lib/ai/settings";
 
 type BaseLesson = {
   lessonNumber: number;
@@ -1001,22 +1007,41 @@ export function buildLessonMap(track: CourseTrack): Record<string, LessonAsset> 
   );
 }
 
+function inferReviewLearningType(seed: LessonReviewSeed): LearningType {
+  if (seed.tags.includes("grammar")) {
+    return "grammar";
+  }
+
+  if (seed.back.split(/\s+/).length <= 3) {
+    return "vocabulary";
+  }
+
+  return "sentence-translation";
+}
+
 export function buildReviewItemsForLesson(lesson: CourseLesson, now = new Date()): ReviewItem[] {
   const dueDate = new Date(now);
   dueDate.setDate(dueDate.getDate() + 1);
   dueDate.setHours(6, 0, 0, 0);
 
-  return lesson.asset.reviewSeeds.map((seed) => ({
+  return lesson.asset.reviewSeeds.map((seed, index) => ({
     id: seed.id,
     front: seed.front,
     back: seed.back,
     hint: seed.hint,
     tags: seed.tags,
+    lessonId: lesson.id,
+    unitId: lesson.unitId,
+    learningType: inferReviewLearningType(seed),
+    importance: index < 2 ? "core" : "extension",
     easeFactor: 2.5,
     intervalDays: 0,
     repetitionCount: 0,
     lapseCount: 0,
-    dueDate: dueDate.toISOString()
+    dueDate: dueDate.toISOString(),
+    lastOutcome: "unseen",
+    lastConfidence: undefined,
+    needsReinforcement: false
   }));
 }
 
@@ -1027,6 +1052,11 @@ export function buildCourseState(params: {
   currentDay: number;
   reviewItems: ReviewItem[];
   reviewLogs: AppState["reviewLogs"];
+  learningSources?: LearningSource[];
+  generatedPlans?: GeneratedLearningPlan[];
+  aiSettings?: AISettings;
+  aiProviderConnections?: AIProviderConnection[];
+  aiUsageLogs?: AIUsageLog[];
 }): AppState {
   const courseTrack = buildCourseTrack(params.profile);
   const plan = buildStudyPlan(courseTrack);
@@ -1041,6 +1071,11 @@ export function buildCourseState(params: {
     plan,
     lessons,
     reviewItems: params.reviewItems,
-    reviewLogs: params.reviewLogs
+    reviewLogs: params.reviewLogs,
+    learningSources: params.learningSources ?? [],
+    generatedPlans: params.generatedPlans ?? [],
+    aiSettings: normalizeAiSettings(params.aiSettings),
+    aiProviderConnections: params.aiProviderConnections ?? [],
+    aiUsageLogs: params.aiUsageLogs ?? []
   };
 }

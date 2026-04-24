@@ -217,7 +217,7 @@ export function GeneratedPracticeStep({
   }
 
   function submitAnswer() {
-    const result = evaluatePracticeAnswer(currentAnswer(), question.answer, question.acceptableAnswers);
+    const result = evaluatePracticeAnswer(currentAnswer(), question.answer, question.acceptableAnswers, question);
     setFeedback(result.feedback);
     void fetch("/api/practice/submit", {
       method: "POST",

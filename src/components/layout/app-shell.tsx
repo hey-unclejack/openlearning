@@ -67,6 +67,7 @@ export async function AppShell({
   );
   const links: Array<{ href: Route; label: string }> = [
     { href: "/dashboard", label: copy.appShell.nav.dashboard },
+    { href: "/ai", label: copy.appShell.nav.ai },
     { href: "/study/today", label: copy.appShell.nav.today },
     { href: "/study/review", label: copy.appShell.nav.review },
     { href: "/progress", label: copy.appShell.nav.progress },
@@ -76,9 +77,11 @@ export async function AppShell({
     ? [
         { href: "/profile", label: copy.profilePage.navOverview },
         { href: "/profile/goals", label: copy.profilePage.navGoals },
+        { href: "/profile/ai-settings", label: copy.profilePage.navAiSettings },
         { href: "/profile/settings", label: copy.profilePage.navSettings }
       ]
     : [
+        { href: "/ai", label: copy.appShell.nav.ai },
         { href: "/study/today", label: copy.appShell.nav.today },
         { href: "/progress", label: copy.appShell.nav.progress },
         { href: "/profile", label: copy.appShell.nav.profile }

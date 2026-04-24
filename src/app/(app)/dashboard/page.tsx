@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { AppShell } from "@/components/layout/app-shell";
+import { ReviewPlanningCard } from "@/components/study/review-planning-card";
 import { getDashboardSnapshot } from "@/lib/content";
 import { getLocaleCopy } from "@/lib/i18n";
 import { getLocale } from "@/lib/i18n-server";
 import { getWeakLearningTypes } from "@/lib/practice-performance";
+import { getTodayReviewPlan } from "@/lib/store";
 import { getCurrentUser, getLearningPerformanceFromHeaders, getSessionIdFromHeaders } from "@/lib/session";
 
 export default async function DashboardPage() {
@@ -11,6 +13,7 @@ export default async function DashboardPage() {
   const user = await getCurrentUser();
   const learningPerformance = await getLearningPerformanceFromHeaders();
   const snapshot = await getDashboardSnapshot(sessionId);
+  const reviewPlan = await getTodayReviewPlan(sessionId);
   const locale = await getLocale();
   const copy = getLocaleCopy(locale);
   const unitLessons = snapshot.unit?.lessons ?? [];
@@ -49,6 +52,16 @@ export default async function DashboardPage() {
               {snapshot.stats.streak} {copy.dashboard.streakUnit}
             </div>
             <p className="subtle">{copy.dashboard.streakBody}</p>
+          </div>
+          <div className="metric-card">
+            <div className="metric-label subtle">{copy.dashboard.formalReviewLabel}</div>
+            <div className="metric-value">{snapshot.stats.formalReviews}</div>
+            <p className="subtle">{copy.dashboard.formalReviewBody}</p>
+          </div>
+          <div className="metric-card">
+            <div className="metric-label subtle">{copy.dashboard.extraReviewLabel}</div>
+            <div className="metric-value">{snapshot.stats.extraReviews}</div>
+            <p className="subtle">{copy.dashboard.extraReviewBody}</p>
           </div>
         </div>
 
@@ -113,22 +126,61 @@ export default async function DashboardPage() {
           </div>
         </div>
 
-        <div className="review-card dashboard-side-card">
-          <div className="eyebrow">{copy.dashboard.recentReview}</div>
-          <ul className="list">
-            {snapshot.recentLogs.length === 0 ? (
-              <li className="subtle">{copy.dashboard.noLogs}</li>
-            ) : (
-              snapshot.recentLogs.map((log) => (
-                <li key={`${log.itemId}-${log.reviewedAt}`}>
-                  <strong>{log.grade}</strong>
-                  <div className="subtle">
-                    {copy.dashboard.nextDue} {new Date(log.nextDueDate).toLocaleDateString(locale)}
-                  </div>
-                </li>
-              ))
-            )}
-          </ul>
+        <div className="lesson-grid progress-detail-grid">
+          <div className="review-card dashboard-side-card">
+            <ReviewPlanningCard
+              body={copy.dashboard.queueBody}
+              bucketSummary={{
+                must: copy.dashboard.mustDoLabel(reviewPlan.counts.must, reviewPlan.must.estimatedMinutes),
+                should: copy.dashboard.shouldDoLabel(reviewPlan.counts.should, reviewPlan.should.estimatedMinutes),
+                can: copy.dashboard.canDoLabel(reviewPlan.counts.can, reviewPlan.can.estimatedMinutes),
+              }}
+              className="stack"
+              locale={locale}
+              title={copy.dashboard.queueEyebrow}
+              weakLabel={copy.dashboard.focusBoostLabel}
+              weakTypes={weakTypes}
+            />
+            <div className="button-row">
+              <Link className="button" href="/study/review">
+                {copy.dashboard.openReview}
+              </Link>
+            </div>
+          </div>
+          <div className="review-card dashboard-side-card">
+            <div className="eyebrow">{copy.dashboard.lessonHotspotEyebrow}</div>
+            <ul className="list">
+              {snapshot.lessonHotspots.length === 0 ? (
+                <li className="subtle">{copy.dashboard.noHotspots}</li>
+              ) : (
+                snapshot.lessonHotspots.map((item) => (
+                  <li key={item.lessonId}>
+                    <strong>{item.lessonTitle}</strong>
+                    <div className="subtle">
+                      {copy.dashboard.lessonHotspotBody(item.misses, Math.round(item.missRate * 100))}
+                    </div>
+                  </li>
+                ))
+              )}
+            </ul>
+          </div>
+          <div className="review-card dashboard-side-card">
+            <div className="eyebrow">{copy.dashboard.recentReview}</div>
+            <ul className="list">
+              {snapshot.recentLogs.length === 0 ? (
+                <li className="subtle">{copy.dashboard.noLogs}</li>
+              ) : (
+                snapshot.recentLogs.map((log) => (
+                  <li key={`${log.itemId}-${log.reviewedAt}`}>
+                    <strong>{log.grade}</strong>
+                    <div className="subtle">
+                      {copy.dashboard.nextDue} {new Date(log.nextDueDate).toLocaleDateString(locale)}
+                    </div>
+                  </li>
+                ))
+              )}
+            </ul>
+          </div>
         </div>
       </section>
     </AppShell>

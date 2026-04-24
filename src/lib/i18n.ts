@@ -52,6 +52,7 @@ export function getLocaleCopy(locale: AppLocale) {
     appShell: {
       nav: {
         dashboard: isZh ? "儀表板" : "Dashboard",
+        ai: isZh ? "AI 導入" : "AI Intake",
         today: isZh ? "今日學習" : "Today",
         review: isZh ? "複習" : "Review",
         progress: isZh ? "進度" : "Progress",
@@ -95,10 +96,18 @@ export function getLocaleCopy(locale: AppLocale) {
       badgeProgress: isZh ? (current: number, target: number) => `${current} / ${target}` : (current: number, target: number) => `${current} / ${target}`,
       navOverview: isZh ? "個人資訊" : "Profile",
       navGoals: isZh ? "學習目標" : "Learning goals",
+      navAiSettings: isZh ? "AI 設定" : "AI settings",
       navSettings: isZh ? "設定" : "Settings",
       railEyebrow: isZh ? "個人檔案" : "Profile",
-      railBody: isZh ? "管理帳號資料、學習目標與個人設定。" : "Manage account details, learning goals, and settings.",
+      railBody: isZh ? "管理帳號資料、學習目標、AI 連接與個人設定。" : "Manage account details, learning goals, AI connections, and settings.",
       railNavEyebrow: isZh ? "個人頁面" : "Profile pages"
+    },
+    aiSettingsPage: {
+      eyebrow: isZh ? "AI 設定" : "AI settings",
+      title: isZh ? "管理 AI 服務與自帶 API key。" : "Manage AI services and BYOK.",
+      body: isZh
+        ? "AI 生成相關的連接與模型設定集中在這裡，和一般顯示設定分開管理。"
+        : "AI generation connections and model preferences live here, separate from general display settings."
     },
     settingsPage: {
       eyebrow: isZh ? "設定" : "Settings",
@@ -262,6 +271,10 @@ export function getLocaleCopy(locale: AppLocale) {
       currentStreak: isZh ? "目前連續天數" : "Current streak",
       streakUnit: isZh ? "天" : "days",
       streakBody: isZh ? "短任務、高頻率，比一次塞很多更重要。" : "Short, frequent sessions matter more than cramming.",
+      formalReviewLabel: isZh ? "正式複習" : "Formal reviews",
+      formalReviewBody: isZh ? "會改變記憶間隔與下一次 due。" : "These change spacing and the next due date.",
+      extraReviewLabel: isZh ? "額外複習" : "Extra reviews",
+      extraReviewBody: isZh ? "只補強弱點，不洗掉正式節奏。" : "These reinforce weak spots without washing out formal timing.",
       currentLesson: isZh ? "目前課程" : "Current lesson",
       lessonPill: isZh ? "今日短課" : "Daily lesson",
       dayLabel: isZh ? (dayNumber: number) => `第 ${dayNumber} 天` : (dayNumber: number) => `Day ${dayNumber}`,
@@ -301,6 +314,25 @@ export function getLocaleCopy(locale: AppLocale) {
       openLesson: isZh ? "打開課程" : "Open lesson",
       weakSpots: isZh ? "弱點區" : "Weak spots",
       lapses: isZh ? "失誤次數" : "lapses",
+      queueEyebrow: isZh ? "今日複習分層" : "Today's review buckets",
+      queueBody: isZh
+        ? "系統會先保住 must_do，再用剩餘時間推進 should_do 和 can_do。"
+        : "The system protects must_do first, then uses remaining time for should_do and can_do.",
+      mustDoLabel: isZh
+        ? (count: number, minutes: number) => `must_do：${count} 張，約 ${minutes} 分鐘`
+        : (count: number, minutes: number) => `must_do: ${count} cards, about ${minutes} min`,
+      shouldDoLabel: isZh
+        ? (count: number, minutes: number) => `should_do：${count} 張，約 ${minutes} 分鐘`
+        : (count: number, minutes: number) => `should_do: ${count} cards, about ${minutes} min`,
+      canDoLabel: isZh
+        ? (count: number, minutes: number) => `can_do：${count} 張，約 ${minutes} 分鐘`
+        : (count: number, minutes: number) => `can_do: ${count} cards, about ${minutes} min`,
+      openReview: isZh ? "打開正式複習" : "Open formal review",
+      lessonHotspotEyebrow: isZh ? "最近卡住的課程" : "Recent lesson hotspots",
+      lessonHotspotBody: isZh
+        ? (misses: number, rate: number) => `錯誤 ${misses} 次，失誤率 ${rate}%`
+        : (misses: number, rate: number) => `${misses} misses, ${rate}% miss rate`,
+      noHotspots: isZh ? "目前還沒有足夠的課程熱區資料。" : "There is not enough hotspot data yet.",
       recentReview: isZh ? "最近複習紀錄" : "Recent review activity",
       noLogs: isZh ? "還沒有複習紀錄，先完成今天的複習。" : "No review logs yet. Finish today's review first.",
       nextDue: isZh ? "下次到期" : "next due"
@@ -352,6 +384,22 @@ export function getLocaleCopy(locale: AppLocale) {
       weakFocusBody: isZh
         ? "系統會根據這些表現，在後續課程中多補一點相關題型。"
         : "The system uses these results to add more of the skill types that need reinforcement.",
+      formalReviewLabel: isZh ? "正式複習" : "Formal reviews",
+      extraReviewLabel: isZh ? "額外複習" : "Extra reviews",
+      extraReviewEyebrow: isZh ? "額外複習" : "Extra review",
+      extraReviewTitle: isZh ? "從已學內容再做一輪加強" : "Run an extra reinforcement session",
+      extraReviewBody: isZh
+        ? "可從全部內容、最近課程或系統判定的弱點切一輪額外複習。"
+        : "Start an extra review round from all learned content, recent lessons, or system-detected weak spots.",
+      extraReviewAll: isZh ? "全部內容" : "All content",
+      extraReviewRecent: isZh ? "最近課程" : "Recent lessons",
+      extraReviewWeak: isZh ? "弱點內容" : "Weak spots",
+      lessonHotspotEyebrow: isZh ? "課程熱區" : "Lesson hotspots",
+      lessonHotspotTitle: isZh ? "哪些課程最常卡住" : "Which lessons still cause misses",
+      lessonHotspotBody: isZh
+        ? (misses: number, rate: number) => `錯誤 ${misses} 次，失誤率 ${rate}%`
+        : (misses: number, rate: number) => `${misses} misses, ${rate}% miss rate`,
+      backToProgress: isZh ? "返回進度" : "Back to progress",
       learningTypeLabel: isZh
         ? (type: string) =>
             ({
@@ -384,6 +432,24 @@ export function getLocaleCopy(locale: AppLocale) {
       dueMessage: isZh
         ? (count: number) => `今天有 ${count} 張卡片到期。先做這批，才能讓記憶曲線回穩。`
         : (count: number) => `${count} cards are due today. Clear them first to stabilize the memory curve.`,
+      todayBudgetLabel: isZh ? "今日時間預算" : "Today's budget",
+      todayBudgetBody: isZh
+        ? (reviewMinutes: number, lessonMinutes: number, bufferMinutes: number) =>
+            `複習 ${reviewMinutes} 分鐘，新課/小測 ${lessonMinutes} 分鐘，緩衝 ${bufferMinutes} 分鐘。`
+        : (reviewMinutes: number, lessonMinutes: number, bufferMinutes: number) =>
+            `${reviewMinutes} min for review, ${lessonMinutes} min for lesson/diagnostic, ${bufferMinutes} min buffer.`,
+      mustDoLabel: isZh
+        ? (count: number, minutes: number) => `must_do：${count} 張，約 ${minutes} 分鐘`
+        : (count: number, minutes: number) => `must_do: ${count} cards, about ${minutes} min`,
+      shouldDoLabel: isZh
+        ? (count: number, minutes: number) => `should_do：${count} 張，約 ${minutes} 分鐘`
+        : (count: number, minutes: number) => `should_do: ${count} cards, about ${minutes} min`,
+      canDoLabel: isZh
+        ? (count: number, minutes: number) => `can_do：${count} 張，約 ${minutes} 分鐘`
+        : (count: number, minutes: number) => `can_do: ${count} cards, about ${minutes} min`,
+      targetRule: isZh
+        ? "先完成 must_do 就算今天達標；若 backlog 太大，系統會優先保住高風險卡。"
+        : "Finishing must_do counts as done for today. When backlog is high, the system protects the highest-risk cards first.",
       startReview: isZh ? "開始複習" : "Start review",
       step2: isZh ? "步驟 2" : "Step 2",
       lessonPill: isZh ? "再上新課" : "Then learn",
@@ -490,11 +556,56 @@ export function getLocaleCopy(locale: AppLocale) {
       flowRecall: isZh ? "先在腦中回想，再決定要不要翻答案。" : "Recall it first before deciding to reveal the answer.",
       flowGrade: isZh ? "看到答案後，用四級評分更新記憶間隔。" : "After revealing the answer, use the four grades to update spacing.",
       flowReturn: isZh ? "清空今天的 due 後，再回到今日課程。" : "Clear today's due items, then return to the lesson.",
+      bucketEyebrow: isZh ? "今日分層" : "Today's buckets",
+      bucketBody: isZh
+        ? "正式複習會先保住 must_do，高風險卡優先，剩餘時間再推進 should_do 和 can_do。"
+        : "Formal review protects must_do first, then uses remaining time for should_do and can_do.",
+      bucketMust: isZh ? (count: number) => `must_do 剩餘 ${count}` : (count: number) => `${count} must_do remaining`,
+      bucketShould: isZh ? (count: number) => `should_do 剩餘 ${count}` : (count: number) => `${count} should_do remaining`,
+      bucketCan: isZh ? (count: number) => `can_do 剩餘 ${count}` : (count: number) => `${count} can_do remaining`,
+      mustDone: isZh ? "今天的 must_do 已清空。" : "Today's must_do queue is clear.",
+      formalReviewLocked: isZh
+        ? "正式複習時程已保留，不會被額外複習洗掉。"
+        : "Formal review timing stays protected and is not washed out by extra review.",
       reviewDone: isZh ? "複習完成" : "Review Done",
       reviewDoneTitle: isZh ? "今天到期的卡片已完成" : "All due cards for today are done",
       reviewDoneBody: isZh
         ? "接下來去完成今日新課程，讓系統明天開始替你安排下一輪複習。"
         : "Continue with today's lesson so the system can schedule the next review cycle.",
+      diagnosticEyebrow: isZh ? "啟動小測" : "Diagnostic",
+      diagnosticTitle: isZh
+        ? (lessonTitle: string) => `${lessonTitle} 啟動小測`
+        : (lessonTitle: string) => `${lessonTitle} diagnostic`,
+      diagnosticBody: isZh
+        ? "先用 2 到 3 題快速確認剛學過的核心句型，系統會用這輪結果調整後續練習比例。"
+        : "Use 2 to 3 quick prompts to check the core patterns you just learned. The result adjusts the next practice mix.",
+      diagnosticDoneTitle: isZh ? "啟動小測完成" : "Diagnostic complete",
+      diagnosticDoneBody: isZh
+        ? "第一輪基準已建立。明天正式複習會接手安排，接下來回到今日節奏。"
+        : "The baseline is set. Formal review takes over tomorrow, so you can return to today's flow.",
+      extraEyebrow: isZh ? "額外複習" : "Extra review",
+      extraTitle: isZh
+        ? (scope: string) =>
+            ({
+              all: "全部已學內容複習",
+              recent: "最近課程複習",
+              weak: "弱點複習",
+              lesson: "課程加強複習"
+            })[scope] ?? "額外複習"
+        : (scope: string) =>
+            ({
+              all: "Review all learned material",
+              recent: "Review recent lessons",
+              weak: "Review weak spots",
+              lesson: "Review this lesson"
+            })[scope] ?? "Extra review",
+      extraBody: isZh
+        ? "這一輪是額外加強，不會直接延後正式 due，但會更新弱點分析與之後的補強安排。"
+        : "This round is extra practice. It will not delay formal due cards, but it will update weakness analysis and later reinforcement.",
+      extraDoneTitle: isZh ? "額外複習完成" : "Extra review complete",
+      extraDoneBody: isZh
+        ? "這輪結果已回寫到後續課程與弱點判定，正式 SRS 排程維持不變。"
+        : "This round now informs future lessons and weakness detection while leaving formal SRS timing unchanged.",
       donePill: isZh ? "可回到課程" : "Ready for lesson",
       returnToToday: isZh ? "返回今日學習" : "Return to Today",
       dueCard: isZh ? "到期卡片" : "Due Card",
@@ -681,6 +792,9 @@ export function getLocaleCopy(locale: AppLocale) {
       completeBody: isZh
         ? "這堂課完成後，系統會把重點內容轉成後續複習卡片，並排入下一輪節奏。"
         : "Finish this lesson and the system will turn its key content into review cards for the next cycle.",
+      warmupEyebrow: isZh ? "課前暖身" : "Warm-up review",
+      warmupTitle: isZh ? (index: number) => `暖身複習 ${index}` : (index: number) => `Warm-up ${index}`,
+      extraReviewLesson: isZh ? "複習這堂已學課程" : "Review this lesson",
       reviewOnlyBody: isZh
         ? "這堂課不是今天的主線課程。回到今日學習，繼續目前的進度。"
         : "This lesson is not today's active lesson. Return to Today to continue the current sequence.",

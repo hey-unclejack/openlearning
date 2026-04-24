@@ -1,4 +1,6 @@
+import Link from "next/link";
 import { AppShell } from "@/components/layout/app-shell";
+import { ReviewPlanningCard } from "@/components/study/review-planning-card";
 import { getDashboardSnapshot } from "@/lib/content";
 import { getLocaleCopy } from "@/lib/i18n";
 import { getLocale } from "@/lib/i18n-server";
@@ -44,6 +46,14 @@ export default async function ProgressPage() {
             <div className="metric-label subtle">{copy.progress.reviewAttempts}</div>
             <div className="metric-value">{snapshot.stats.totalReviews}</div>
           </div>
+          <div className="metric-card progress-metric-card">
+            <div className="metric-label subtle">{copy.progress.formalReviewLabel}</div>
+            <div className="metric-value">{snapshot.stats.formalReviews}</div>
+          </div>
+          <div className="metric-card progress-metric-card">
+            <div className="metric-label subtle">{copy.progress.extraReviewLabel}</div>
+            <div className="metric-value">{snapshot.stats.extraReviews}</div>
+          </div>
         </div>
 
         {currentPlanDay && currentLesson ? (
@@ -66,6 +76,28 @@ export default async function ProgressPage() {
         ) : null}
 
         <div className="lesson-grid progress-detail-grid">
+          <div className="review-card progress-weak-card">
+            <ReviewPlanningCard
+              body={copy.progress.extraReviewBody}
+              className="stack"
+              locale={locale}
+              title={copy.progress.extraReviewEyebrow}
+              weakLabel={copy.progress.weakFocusTitle}
+              weakTypes={weakestType ? [weakestType] : []}
+            />
+            <h3 className="section-title">{copy.progress.extraReviewTitle}</h3>
+            <div className="button-row">
+              <Link className="button" href="/study/review/extra?scope=all">
+                {copy.progress.extraReviewAll}
+              </Link>
+              <Link className="button-secondary" href="/study/review/extra?scope=recent">
+                {copy.progress.extraReviewRecent}
+              </Link>
+              <Link className="button-secondary" href="/study/review/extra?scope=weak">
+                {copy.progress.extraReviewWeak}
+              </Link>
+            </div>
+          </div>
           <div className="review-card progress-map-card">
             <div className="eyebrow">{copy.progress.planMap}</div>
             <div className="progress-unit-list">
@@ -160,6 +192,18 @@ export default async function ProgressPage() {
                     {copy.progress.lapses} {item.lapseCount}, {copy.progress.interval} {item.intervalDays}{" "}
                     {copy.progress.dayUnit}
                   </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="review-card progress-weak-card">
+            <div className="eyebrow">{copy.progress.lessonHotspotEyebrow}</div>
+            <h3 className="section-title">{copy.progress.lessonHotspotTitle}</h3>
+            <ul className="list">
+              {snapshot.lessonHotspots.map((item) => (
+                <li key={item.lessonId}>
+                  <strong>{item.lessonTitle}</strong>
+                  <div className="subtle">{copy.progress.lessonHotspotBody(item.misses, Math.round(item.missRate * 100))}</div>
                 </li>
               ))}
             </ul>

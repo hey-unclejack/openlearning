@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { ToastNotice } from "@/components/ui/toast-notice";
 import { AppLocale, getLocaleCopy } from "@/lib/i18n";
+import { LessonCompletePayload, resolveLessonCompletionRedirect } from "@/lib/lesson-complete-flow";
 
 export function LessonCompleteButton({ lessonId, locale }: { lessonId: string; locale: AppLocale }) {
   const router = useRouter();
@@ -30,38 +31,15 @@ export function LessonCompleteButton({ lessonId, locale }: { lessonId: string; l
             body: JSON.stringify({ lessonId })
           })
             .then(async (response) => {
-              const payload = (await response.json()) as {
-                ok?: boolean;
-                error?: string;
-                nextLessonId?: string;
-                completedLessonId?: string;
-                completedLessonTitle?: string;
-                completedUnitTitle?: string;
-                unitCompleted?: boolean;
-              };
+              const payload = (await response.json()) as LessonCompletePayload;
               if (!response.ok || !payload.ok) {
                 throw new Error(payload.error || copy.lesson.completeError);
               }
 
-              const nextUrl = new URL("/study/today", window.location.origin);
-              if (payload.completedLessonTitle) {
-                nextUrl.searchParams.set("completedLesson", payload.completedLessonTitle);
-              }
-              if (payload.completedLessonId) {
-                nextUrl.searchParams.set("completedLessonId", payload.completedLessonId);
-              }
-              if (payload.completedUnitTitle) {
-                nextUrl.searchParams.set("completedUnit", payload.completedUnitTitle);
-              }
-              if (payload.nextLessonId) {
-                nextUrl.searchParams.set("nextLessonId", payload.nextLessonId);
-              }
-              if (payload.unitCompleted) {
-                nextUrl.searchParams.set("unitCompleted", "1");
-              }
+              const nextPath = resolveLessonCompletionRedirect(payload, window.location.origin);
 
               startTransition(() => {
-                router.push(`${nextUrl.pathname}${nextUrl.search}`);
+                router.push(nextPath);
                 router.refresh();
               });
             })
