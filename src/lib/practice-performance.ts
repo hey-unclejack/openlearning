@@ -1,15 +1,28 @@
 import { getSupabaseAdminClient } from "@/lib/supabase";
-import { LearningPerformance, LearningType } from "@/lib/types";
+import { getSkillDimensionsForDomain, normalizeSkillDimension } from "@/lib/learning-goals";
+import { LearningDomain, LearningPerformance, LearningType } from "@/lib/types";
 
 export const APP_PERFORMANCE_COOKIE = "openlearning_performance";
 
 export const learningTypes: LearningType[] = [
-  "sentence-translation",
+  "translation",
   "vocabulary",
   "listening",
   "speaking",
   "writing",
-  "grammar"
+  "grammar",
+  "comprehension",
+  "main-idea",
+  "rewrite",
+  "summary",
+  "concept",
+  "procedure",
+  "calculation",
+  "word-problem",
+  "error-analysis",
+  "recall",
+  "application",
+  "explanation"
 ];
 
 type LearningPerformanceRow = {
@@ -28,7 +41,7 @@ export function parseLearningPerformanceCookie(value?: string | null): LearningP
     const parsed = JSON.parse(decoded) as Record<string, { attempts?: number; correct?: number }>;
 
     return learningTypes.reduce<LearningPerformance>((acc, learningType) => {
-      const item = parsed[learningType];
+      const item = parsed[learningType] ?? (learningType === "translation" ? parsed["sentence-translation"] : undefined);
       if (!item) {
         return acc;
       }
@@ -50,7 +63,8 @@ export function serializeLearningPerformanceCookie(performance: LearningPerforma
 
 export function normalizeLearningPerformance(rows: LearningPerformanceRow[]) {
   return rows.reduce<LearningPerformance>((acc, row) => {
-    acc[row.learning_type] = {
+    const learningType = normalizeSkillDimension(row.learning_type);
+    acc[learningType] = {
       attempts: Number(row.attempts ?? 0),
       correct: Number(row.correct_count ?? 0)
     };
@@ -64,19 +78,20 @@ export function updateLearningPerformance(params: {
   correct: boolean;
 }) {
   const { performance, learningType, correct } = params;
-  const current = performance[learningType] ?? { attempts: 0, correct: 0 };
+  const normalizedType = normalizeSkillDimension(learningType);
+  const current = performance[normalizedType] ?? { attempts: 0, correct: 0 };
 
   return {
     ...performance,
-    [learningType]: {
+    [normalizedType]: {
       attempts: current.attempts + 1,
       correct: current.correct + (correct ? 1 : 0)
     }
   };
 }
 
-export function getWeakLearningTypes(performance: LearningPerformance) {
-  return [...learningTypes]
+export function getWeakLearningTypes(performance: LearningPerformance, domain: LearningDomain = "language") {
+  return [...getSkillDimensionsForDomain(domain)]
     .map((learningType) => {
       const stat = performance[learningType];
       if (!stat || stat.attempts === 0) {
@@ -92,8 +107,8 @@ export function getWeakLearningTypes(performance: LearningPerformance) {
     .map((item) => item.learningType);
 }
 
-export function getLearningPerformanceRows(performance: LearningPerformance) {
-  return learningTypes.map((learningType) => {
+export function getLearningPerformanceRows(performance: LearningPerformance, domain: LearningDomain = "language") {
+  return getSkillDimensionsForDomain(domain).map((learningType) => {
     const stat = performance[learningType] ?? { attempts: 0, correct: 0 };
     const accuracy = stat.attempts > 0 ? stat.correct / stat.attempts : 0;
 
@@ -173,7 +188,7 @@ export async function recordLearningPerformance(params: {
   const currentPerformance = await readLearningPerformance(params.sessionId, params.fallbackCookieValue);
   const nextPerformance = updateLearningPerformance({
     performance: currentPerformance,
-    learningType: params.learningType,
+    learningType: normalizeSkillDimension(params.learningType),
     correct: params.correct
   });
 

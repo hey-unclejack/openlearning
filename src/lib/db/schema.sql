@@ -5,6 +5,12 @@ create table if not exists learner_profiles (
   onboarded boolean not null default false,
   streak integer not null default 0,
   current_day integer not null default 1,
+  account_mode text not null default 'supervisor' check (account_mode in ('supervisor', 'child')),
+  supervisor_pin_hash text,
+  active_learner_id text,
+  learners jsonb not null default '[]'::jsonb,
+  active_goal_id text,
+  goals jsonb not null default '[]'::jsonb,
   target_language text not null,
   native_language text not null,
   level text not null check (level in ('A1', 'A2', 'B1', 'B2')),
@@ -56,7 +62,11 @@ create table if not exists review_items (
   tags jsonb not null default '[]'::jsonb,
   lesson_id text,
   unit_id text,
+  learner_id text not null default 'self',
   learning_type text,
+  skill_dimension text,
+  goal_id text,
+  domain text,
   importance text not null default 'core' check (importance in ('core', 'extension')),
   ease_factor numeric(4,2) not null default 2.5,
   interval_days integer not null default 0,
@@ -90,7 +100,11 @@ create table if not exists review_logs (
   response_ms integer,
   lesson_id text,
   unit_id text,
+  learner_id text not null default 'self',
   learning_type text,
+  skill_dimension text,
+  goal_id text,
+  domain text,
   outcome text check (outcome in ('correct', 'incorrect'))
 );
 
@@ -102,12 +116,25 @@ create table if not exists learning_performance_stats (
   session_id text not null,
   learning_type text not null check (
     learning_type in (
+      'translation',
       'sentence-translation',
       'vocabulary',
       'listening',
       'speaking',
       'writing',
-      'grammar'
+      'grammar',
+      'comprehension',
+      'main-idea',
+      'rewrite',
+      'summary',
+      'concept',
+      'procedure',
+      'calculation',
+      'word-problem',
+      'error-analysis',
+      'recall',
+      'application',
+      'explanation'
     )
   ),
   attempts integer not null default 0,
@@ -125,7 +152,10 @@ create table if not exists learning_sources (
   session_id text not null references learner_profiles(session_id) on delete cascade,
   source_id text not null,
   source_type text not null check (source_type in ('topic', 'text', 'pdf', 'image', 'url', 'youtube')),
-  subject text not null default 'language' check (subject in ('language', 'math', 'chinese')),
+  learner_id text not null default 'self',
+  goal_id text,
+  domain text not null default 'language' check (domain in ('language', 'school-subject', 'exam-cert', 'self-study', 'mandarin-literacy', 'math', 'general')),
+  subject text not null default 'language',
   title text not null,
   raw_text text not null,
   source_url text,
@@ -144,7 +174,10 @@ create table if not exists generated_plans (
   session_id text not null references learner_profiles(session_id) on delete cascade,
   generated_plan_id text not null,
   source_id text not null,
-  subject text not null default 'language' check (subject in ('language', 'math', 'chinese')),
+  learner_id text not null default 'self',
+  goal_id text,
+  domain text not null default 'language' check (domain in ('language', 'school-subject', 'exam-cert', 'self-study', 'mandarin-literacy', 'math', 'general')),
+  subject text not null default 'language',
   provider_mode text not null check (provider_mode in ('official', 'byok', 'oauth')),
   model text not null,
   level text not null check (level in ('A1', 'A2', 'B1', 'B2')),
@@ -160,6 +193,76 @@ create table if not exists generated_plans (
 
 create index if not exists generated_plans_session_created_idx
   on generated_plans (session_id, created_at desc);
+
+create table if not exists classrooms (
+  id uuid primary key default gen_random_uuid(),
+  session_id text not null references learner_profiles(session_id) on delete cascade,
+  classroom_id text not null,
+  teacher_account_id text not null,
+  title text not null,
+  school_name text,
+  grade_band text,
+  archived_at timestamptz,
+  created_at timestamptz not null default timezone('utc', now()),
+  unique (session_id, classroom_id)
+);
+
+create index if not exists classrooms_session_created_idx
+  on classrooms (session_id, created_at desc);
+
+create table if not exists class_goal_templates (
+  id uuid primary key default gen_random_uuid(),
+  session_id text not null references learner_profiles(session_id) on delete cascade,
+  template_id text not null,
+  classroom_id text not null,
+  source_goal_id text not null,
+  title text not null,
+  domain text not null check (domain in ('language', 'school-subject', 'exam-cert', 'self-study', 'mandarin-literacy', 'math', 'general')),
+  subject text,
+  level text not null check (level in ('A1', 'A2', 'B1', 'B2')),
+  purpose text not null,
+  daily_minutes integer not null check (daily_minutes between 5 and 120),
+  template_version integer not null default 1,
+  sync_policy text not null default 'append-new-content' check (sync_policy in ('append-new-content')),
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default timezone('utc', now()),
+  updated_at timestamptz not null default timezone('utc', now()),
+  unique (session_id, template_id)
+);
+
+create index if not exists class_goal_templates_classroom_idx
+  on class_goal_templates (session_id, classroom_id);
+
+create table if not exists class_invites (
+  id uuid primary key default gen_random_uuid(),
+  session_id text not null references learner_profiles(session_id) on delete cascade,
+  invite_id text not null,
+  classroom_id text not null,
+  template_id text not null,
+  code text not null,
+  status text not null default 'active' check (status in ('active', 'disabled', 'expired')),
+  expires_at timestamptz,
+  created_at timestamptz not null default timezone('utc', now()),
+  unique (session_id, invite_id),
+  unique (code)
+);
+
+create index if not exists class_invites_code_idx
+  on class_invites (code);
+
+create table if not exists class_enrollments (
+  id uuid primary key default gen_random_uuid(),
+  session_id text not null references learner_profiles(session_id) on delete cascade,
+  enrollment_id text not null,
+  classroom_id text not null,
+  template_id text not null,
+  parent_account_id text not null,
+  child_learner_id text not null,
+  assigned_goal_id text not null,
+  status text not null default 'active' check (status in ('active', 'archived')),
+  joined_at timestamptz not null default timezone('utc', now()),
+  unique (session_id, enrollment_id)
+);
 
 create table if not exists ai_provider_connections (
   id uuid primary key default gen_random_uuid(),
@@ -212,7 +315,7 @@ create index if not exists ai_usage_logs_session_created_idx
 create or replace view review_learning_type_summary as
 select
   session_id,
-  learning_type,
+  coalesce(skill_dimension, learning_type) as learning_type,
   count(*)::integer as attempts,
   count(*) filter (where outcome = 'correct')::integer as correct_count,
   count(*) filter (where outcome = 'incorrect')::integer as incorrect_count,
@@ -227,8 +330,8 @@ select
   count(*) filter (where session_type = 'extra')::integer as extra_attempts,
   max(reviewed_at) as last_reviewed_at
 from review_logs
-where learning_type is not null
-group by session_id, learning_type;
+where coalesce(skill_dimension, learning_type) is not null
+group by session_id, coalesce(skill_dimension, learning_type);
 
 create or replace view review_lesson_hotspots as
 select

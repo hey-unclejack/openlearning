@@ -26,11 +26,17 @@ export default async function GeneratedLessonPage({
   const { plan, day } = generated;
   const nextDay = plan.days.find((item) => item.dayNumber === day.dayNumber + 1);
   const isZh = locale === "zh-TW";
-  const subjectLabel = {
+  const subjectLabels: Record<string, string> = {
     language: isZh ? "語言" : "Language",
+    "school-subject": isZh ? "學校科目" : "School subject",
+    "exam-cert": isZh ? "考試 / 證照" : "Exam / certification",
+    "self-study": isZh ? "自學內容" : "Self-study",
     math: isZh ? "數學" : "Math",
     chinese: isZh ? "國文" : "Mandarin",
-  }[plan.subject];
+    "mandarin-literacy": isZh ? "國文" : "Mandarin literacy",
+    general: isZh ? "通用內容" : "General content",
+  };
+  const subjectLabel = subjectLabels[plan.subject] ?? (isZh ? "學習內容" : "Learning content");
 
   return (
     <LessonPlayer

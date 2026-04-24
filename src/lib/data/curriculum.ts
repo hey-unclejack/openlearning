@@ -2,12 +2,17 @@ import {
   AppState,
   AIProviderConnection,
   AISettings,
+  ClassEnrollment,
+  ClassGoalTemplate,
+  Classroom,
+  ClassInvite,
   CourseLesson,
   CourseStage,
   CourseTrack,
   CourseUnit,
   GeneratedLearningPlan,
   LearningSource,
+  LearnerSpace,
   LearnerProfile,
   LessonAsset,
   LessonReviewSeed,
@@ -18,6 +23,13 @@ import {
   LearningType
 } from "@/lib/types";
 import { normalizeAiSettings } from "@/lib/ai/settings";
+import { normalizeLearnerSpaces } from "@/lib/learner-spaces";
+import {
+  getActiveLearningGoal,
+  legacyLearningTypeForSkill,
+  normalizeLearnerProfile,
+  normalizeSkillDimension,
+} from "@/lib/learning-goals";
 
 type BaseLesson = {
   lessonNumber: number;
@@ -856,7 +868,8 @@ function buildLessonAsset(
 
   const basePractice = lesson.practice.map((question, index) => ({
     id: `${lessonId}-practice-${index + 1}`,
-    learningType: question.learningType ?? "sentence-translation",
+    skillDimension: normalizeSkillDimension(question.learningType ?? "translation", "language"),
+    learningType: legacyLearningTypeForSkill(normalizeSkillDimension(question.learningType ?? "translation", "language")),
     prompt: question.prompt,
     answer: question.answer,
     acceptableAnswers: question.acceptableAnswers,
@@ -881,7 +894,8 @@ function buildLessonAsset(
             ...basePractice,
             {
               id: `${lessonId}-practice-bonus`,
-              learningType: (bonusSeed.tags.includes("grammar") ? "grammar" : "sentence-translation") as LearningType,
+              skillDimension: normalizeSkillDimension(bonusSeed.tags.includes("grammar") ? "grammar" : "translation", "language"),
+              learningType: legacyLearningTypeForSkill(normalizeSkillDimension(bonusSeed.tags.includes("grammar") ? "grammar" : "translation", "language")) as LearningType,
               prompt: challengePrompt.replace("這句", bonusSeed.front),
               answer: bonusSeed.back,
               hint: `${bonusSeed.hint} ${levelHint}`.trim()
@@ -948,6 +962,8 @@ function personalizeLessonObjective(unit: BaseUnit, lesson: BaseLesson, profile:
 }
 
 export function buildCourseTrack(profile: LearnerProfile): CourseTrack {
+  const normalizedProfile = normalizeLearnerProfile(profile);
+  const activeGoal = getActiveLearningGoal(normalizedProfile);
   let dayNumber = 1;
 
   const units: CourseUnit[] = baseUnits.map((unit) => ({
@@ -961,14 +977,16 @@ export function buildCourseTrack(profile: LearnerProfile): CourseTrack {
       const courseLesson: CourseLesson = {
         id: lessonId,
         unitId: unit.id,
+        goalId: activeGoal.id,
+        domain: activeGoal.domain,
         lessonNumber: lesson.lessonNumber,
         dayNumber: dayNumber++,
         title: lesson.title,
-        objective: personalizeLessonObjective(unit, lesson, profile),
+        objective: personalizeLessonObjective(unit, lesson, normalizedProfile),
         vocabulary: lesson.vocabulary,
         chunks: lesson.chunks,
         dialogue: lesson.dialogue,
-        asset: buildLessonAsset(unit, lesson, profile, lessonId)
+        asset: buildLessonAsset(unit, lesson, normalizedProfile, lessonId)
       };
 
       return courseLesson;
@@ -978,7 +996,8 @@ export function buildCourseTrack(profile: LearnerProfile): CourseTrack {
   return {
     id: "english-core-track",
     title: "English Core Track",
-    language: "english",
+    language: activeGoal.targetLanguage ?? normalizedProfile.targetLanguage,
+    goalId: activeGoal.id,
     units
   };
 }
@@ -1016,7 +1035,7 @@ function inferReviewLearningType(seed: LessonReviewSeed): LearningType {
     return "vocabulary";
   }
 
-  return "sentence-translation";
+  return "translation";
 }
 
 export function buildReviewItemsForLesson(lesson: CourseLesson, now = new Date()): ReviewItem[] {
@@ -1024,31 +1043,49 @@ export function buildReviewItemsForLesson(lesson: CourseLesson, now = new Date()
   dueDate.setDate(dueDate.getDate() + 1);
   dueDate.setHours(6, 0, 0, 0);
 
-  return lesson.asset.reviewSeeds.map((seed, index) => ({
-    id: seed.id,
-    front: seed.front,
-    back: seed.back,
-    hint: seed.hint,
-    tags: seed.tags,
-    lessonId: lesson.id,
-    unitId: lesson.unitId,
-    learningType: inferReviewLearningType(seed),
-    importance: index < 2 ? "core" : "extension",
-    easeFactor: 2.5,
-    intervalDays: 0,
-    repetitionCount: 0,
-    lapseCount: 0,
-    dueDate: dueDate.toISOString(),
-    lastOutcome: "unseen",
-    lastConfidence: undefined,
-    needsReinforcement: false
-  }));
+  return lesson.asset.reviewSeeds.map((seed, index) => {
+    const domain = lesson.domain ?? (seed.tags.includes("math")
+      ? "math"
+      : seed.tags.includes("mandarin-literacy") || seed.tags.includes("chinese") || seed.tags.includes("reading")
+        ? "mandarin-literacy"
+        : seed.tags.includes("general")
+          ? "general"
+          : "language");
+    const skillDimension = normalizeSkillDimension(inferReviewLearningType(seed), domain);
+
+    return {
+      id: seed.id,
+      front: seed.front,
+      back: seed.back,
+      hint: seed.hint,
+      tags: seed.tags,
+      lessonId: lesson.id,
+      unitId: lesson.unitId,
+      goalId: lesson.goalId,
+      domain,
+      skillDimension,
+      learningType: legacyLearningTypeForSkill(skillDimension),
+      importance: index < 2 ? "core" : "extension",
+      easeFactor: 2.5,
+      intervalDays: 0,
+      repetitionCount: 0,
+      lapseCount: 0,
+      dueDate: dueDate.toISOString(),
+      lastOutcome: "unseen",
+      lastConfidence: undefined,
+      needsReinforcement: false
+    };
+  });
 }
 
 export function buildCourseState(params: {
   onboarded: boolean;
   streak: number;
   profile: LearnerProfile;
+  activeLearnerId?: string;
+  learners?: LearnerSpace[];
+  accountMode?: AppState["accountMode"];
+  supervisorPinHash?: string;
   currentDay: number;
   reviewItems: ReviewItem[];
   reviewLogs: AppState["reviewLogs"];
@@ -1057,15 +1094,29 @@ export function buildCourseState(params: {
   aiSettings?: AISettings;
   aiProviderConnections?: AIProviderConnection[];
   aiUsageLogs?: AIUsageLog[];
+  classrooms?: Classroom[];
+  classGoalTemplates?: ClassGoalTemplate[];
+  classInvites?: ClassInvite[];
+  classEnrollments?: ClassEnrollment[];
 }): AppState {
-  const courseTrack = buildCourseTrack(params.profile);
+  const learnerState = normalizeLearnerSpaces({
+    profile: normalizeLearnerProfile(params.profile),
+    activeLearnerId: params.activeLearnerId,
+    learners: params.learners,
+  });
+  const profile = learnerState.profile;
+  const courseTrack = buildCourseTrack(profile);
   const plan = buildStudyPlan(courseTrack);
   const lessons = buildLessonMap(courseTrack);
 
   return {
     onboarded: params.onboarded,
     streak: params.streak,
-    profile: params.profile,
+    accountMode: params.accountMode ?? "supervisor",
+    supervisorPinHash: params.supervisorPinHash,
+    activeLearnerId: learnerState.activeLearnerId,
+    learners: learnerState.learners,
+    profile,
     currentDay: Math.min(Math.max(params.currentDay, 1), plan.length),
     courseTrack,
     plan,
@@ -1076,6 +1127,10 @@ export function buildCourseState(params: {
     generatedPlans: params.generatedPlans ?? [],
     aiSettings: normalizeAiSettings(params.aiSettings),
     aiProviderConnections: params.aiProviderConnections ?? [],
-    aiUsageLogs: params.aiUsageLogs ?? []
+    aiUsageLogs: params.aiUsageLogs ?? [],
+    classrooms: params.classrooms ?? [],
+    classGoalTemplates: params.classGoalTemplates ?? [],
+    classInvites: params.classInvites ?? [],
+    classEnrollments: params.classEnrollments ?? []
   };
 }

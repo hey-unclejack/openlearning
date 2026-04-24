@@ -4,6 +4,7 @@ import { ReviewPlanningCard } from "@/components/study/review-planning-card";
 import { getDashboardSnapshot } from "@/lib/content";
 import { getLocaleCopy } from "@/lib/i18n";
 import { getLocale } from "@/lib/i18n-server";
+import { getActiveGoalPlans, getActiveLearningGoal, hasFixedCourseTrack } from "@/lib/learning-goals";
 import { getLearningPerformanceRows, getWeakLearningTypes } from "@/lib/practice-performance";
 import { readState } from "@/lib/store";
 import { getCurrentUser, getLearningPerformanceFromHeaders, getSessionIdFromHeaders } from "@/lib/session";
@@ -18,8 +19,13 @@ export default async function ProgressPage() {
   const copy = getLocaleCopy(locale);
   const currentPlanDay = state.plan.find((item) => item.dayNumber === state.currentDay) ?? state.plan[0];
   const currentLesson = currentPlanDay ? state.lessons[currentPlanDay.lessonId] : undefined;
-  const performanceRows = getLearningPerformanceRows(learningPerformance);
-  const weakestType = getWeakLearningTypes(learningPerformance)[0];
+  const activeDomain = state.profile ? getActiveLearningGoal(state.profile).domain : "language";
+  const activeGoal = state.profile ? getActiveLearningGoal(state.profile) : undefined;
+  const usesFixedCourseTrack = hasFixedCourseTrack(activeGoal);
+  const activeGeneratedPlans = getActiveGoalPlans(state.generatedPlans, activeGoal);
+  const isZh = locale === "zh-TW";
+  const performanceRows = getLearningPerformanceRows(learningPerformance, activeDomain);
+  const weakestType = getWeakLearningTypes(learningPerformance, activeDomain)[0];
 
   return (
     <AppShell activePath="/progress" locale={locale} userEmail={user?.email}>
@@ -56,7 +62,7 @@ export default async function ProgressPage() {
           </div>
         </div>
 
-        {currentPlanDay && currentLesson ? (
+        {usesFixedCourseTrack && currentPlanDay && currentLesson ? (
           <div className="review-card progress-current-card">
             <div className="progress-current-meta">
               <div className="eyebrow">{copy.progress.currentFocus}</div>
@@ -100,6 +106,7 @@ export default async function ProgressPage() {
           </div>
           <div className="review-card progress-map-card">
             <div className="eyebrow">{copy.progress.planMap}</div>
+            {usesFixedCourseTrack ? (
             <div className="progress-unit-list">
               {state.courseTrack.units.map((unit) => {
                 const completedCount = unit.lessons.filter((lesson) => lesson.dayNumber < state.currentDay).length;
@@ -153,6 +160,65 @@ export default async function ProgressPage() {
                 );
               })}
             </div>
+            ) : (
+              <div className="progress-unit-list">
+                {activeGeneratedPlans.length === 0 ? (
+                  <article className="progress-unit-card">
+                    <div className="progress-unit-head">
+                      <div>
+                        <div className="progress-unit-label">{activeGoal?.title ?? (isZh ? "內容學習" : "Content learning")}</div>
+                        <h3 className="progress-unit-title">{isZh ? "尚未建立 AI / 內容生成計劃" : "No generated plan yet"}</h3>
+                      </div>
+                    </div>
+                    <p className="subtle">
+                      {isZh
+                        ? "這個學習目標沒有固定課程地圖。請先到 AI 導入建立短課，完成後這裡會顯示生成計劃進度。"
+                        : "This learning goal does not use a fixed course map. Create a generated plan in AI intake and its progress will appear here."}
+                    </p>
+                    <div className="button-row">
+                      <Link className="button" href="/ai">{isZh ? "前往 AI 導入" : "Open AI intake"}</Link>
+                    </div>
+                  </article>
+                ) : activeGeneratedPlans.map((plan) => {
+                  const completedCount = plan.days.filter((day) => day.completedAt).length;
+                  const progressValue = Math.round((completedCount / plan.days.length) * 100);
+
+                  return (
+                    <article key={plan.id} className="progress-unit-card">
+                      <div className="progress-unit-head">
+                        <div>
+                          <div className="progress-unit-label">{activeGoal?.title ?? plan.subject}</div>
+                          <h3 className="progress-unit-title">{plan.days[0]?.title ?? plan.subject}</h3>
+                        </div>
+                        <div className="progress-unit-meta">
+                          <span className="pill lesson-meta-pill-secondary">{plan.status}</span>
+                          <div className="progress-unit-count">
+                            {copy.progress.unitProgress(completedCount, plan.days.length)}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="progress-bar" aria-hidden="true">
+                        <div className="progress-bar-fill" style={{ width: `${progressValue}%` }} />
+                      </div>
+                      <div className="progress-lesson-list">
+                        {plan.days.map((day) => (
+                          <div key={day.lessonId} className={`progress-lesson-row${day.completedAt ? " done" : ""}`}>
+                            <span className="progress-lesson-day">AI Day {day.dayNumber}</span>
+                            <div className="progress-lesson-copy">
+                              <strong>{day.title}</strong>
+                              <span className="subtle">{day.objective}</span>
+                            </div>
+                            <span className="progress-lesson-state">
+                              {day.completedAt ? copy.progress.statusDone : copy.progress.statusUpcoming}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            )}
           </div>
           <div className="review-card progress-weak-card">
             <div className="eyebrow">{copy.progress.skillProfile}</div>

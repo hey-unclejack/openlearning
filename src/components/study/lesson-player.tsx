@@ -6,6 +6,7 @@ import { GeneratedPracticeStep } from "@/components/study/generated-practice-ste
 import { LessonCompleteButton } from "@/components/study/lesson-complete-button";
 import { StudySessionShell } from "@/components/study/study-session-shell";
 import { AppLocale, getLocaleCopy } from "@/lib/i18n";
+import { normalizeLearningDomain } from "@/lib/learning-goals";
 import { buildDerivedPracticeQuestions, selectPracticePlan } from "@/lib/lesson-practice";
 import {
   LearningFocus,
@@ -78,7 +79,7 @@ export function getSubjectLessonCopy(subject: SubjectArea, locale: AppLocale) {
     };
   }
 
-  if (subject === "chinese") {
+  if (subject === "chinese" || subject === "mandarin-literacy") {
     return {
       vocabularyEyebrow: isZh ? "關鍵詞" : "Key terms",
       vocabularyTitle: isZh ? "先抓住這段文字的關鍵詞" : "Lock in the key terms in this passage",
@@ -174,11 +175,12 @@ export function LessonPlayer({
 }) {
   const copy = getLocaleCopy(locale);
   const [stepIndex, setStepIndex] = useState(0);
+  const domain = normalizeLearningDomain(subject);
   const subjectCopy = getSubjectLessonCopy(subject, locale);
   const practiceContextWords = useMemo(() => [...vocabulary, ...chunks], [chunks, vocabulary]);
   const derivedPractice = useMemo(
-    () => buildDerivedPracticeQuestions({ reviewSeeds, chunks, vocabulary, dialogue }),
-    [chunks, dialogue, reviewSeeds, vocabulary],
+    () => domain === "language" ? buildDerivedPracticeQuestions({ reviewSeeds, chunks, vocabulary, dialogue }) : [],
+    [chunks, dialogue, domain, reviewSeeds, vocabulary],
   );
   const warmupPractice = useMemo(
     () =>
@@ -205,9 +207,10 @@ export function LessonPlayer({
         level: profileLevel,
         focus,
         dailyMinutes,
-        performance: learningPerformance
+        performance: learningPerformance,
+        domain
       }),
-    [dailyMinutes, derivedPractice, focus, learningPerformance, practice, profileLevel],
+    [dailyMinutes, derivedPractice, domain, focus, learningPerformance, practice, profileLevel],
   );
 
   const steps = useMemo<LessonPlayerStep[]>(

@@ -3,7 +3,23 @@
 import Link from "next/link";
 import { ChangeEvent, FormEvent, useState } from "react";
 import { AppLocale } from "@/lib/i18n";
-import { AIProviderMode, AIUsageLog, GeneratedLearningPlan, LearningSource, LearningSourceType, SubjectArea } from "@/lib/types";
+import {
+  getLearningGoalSummaryRows,
+  learningDomainLabel,
+  normalizeLearningDomain,
+  subjectDisplayLabel
+} from "@/lib/learning-goals";
+import {
+  AIProviderMode,
+  AIUsageLog,
+  GeneratedLearningPlan,
+  LearningDomain,
+  LearningGoal,
+  LearningSource,
+  LearningSourceType,
+  SubjectArea,
+  TargetLanguage
+} from "@/lib/types";
 
 type PreviewPayload = {
   source: LearningSource;
@@ -21,6 +37,7 @@ function copy(locale: AppLocale) {
   return {
     sourceType: isZh ? "內容來源" : "Source type",
     subject: isZh ? "科目" : "Subject",
+    activeGoal: isZh ? "目前學習目標" : "Current learning goal",
     title: isZh ? "主題或標題" : "Topic or title",
     rawText: isZh ? "貼上內容、逐字稿或教材文字" : "Paste content, transcript, or study text",
     url: isZh ? "來源網址" : "Source URL",
@@ -45,6 +62,10 @@ function copy(locale: AppLocale) {
     billing: isZh
       ? "官方 AI 由平台額度計費；API key / OAuth 會使用你在 AI 設定頁連接的服務。"
       : "Official AI uses platform quota; API key / OAuth uses the service connected in AI settings.",
+    noGoal: isZh ? "尚未設定學習目標；目前會以語言學習預設值生成。" : "No learning goal is set yet; language defaults will be used.",
+    titlePlaceholder: isZh
+      ? "例如：光合作用、國二一次函數、TOEIC Part 5、產品管理章節"
+      : "e.g. photosynthesis, linear functions, TOEIC Part 5, product management chapter",
   };
 }
 
@@ -57,18 +78,79 @@ const sourceOptions: Array<{ value: LearningSourceType; label: string }> = [
   { value: "youtube", label: "YouTube transcript" },
 ];
 
-const subjectOptions: Array<{ value: SubjectArea; label: string }> = [
-  { value: "language", label: "Language" },
-  { value: "math", label: "Math" },
-  { value: "chinese", label: "Chinese" },
+const targetLanguageOptions: Array<{ value: TargetLanguage; label: string }> = [
+  { value: "english", label: "English" },
+  { value: "japanese", label: "Japanese" },
+  { value: "korean", label: "Korean" },
 ];
+
+const schoolSubjectOptionValues = new Set(["math", "mandarin-literacy", "science", "social-studies"]);
+
+function subjectOptions(locale: AppLocale, activeGoal?: LearningGoal): Array<{ value: SubjectArea; label: string }> {
+  const isZh = locale === "zh-TW";
+  const options: Array<{ value: SubjectArea; label: string }> = [
+    { value: "language", label: isZh ? "語言學習" : "Language" },
+    { value: "math", label: isZh ? "學校科目：數學" : "School subject: Math" },
+    { value: "mandarin-literacy", label: isZh ? "學校科目：國語 / 國文" : "School subject: Mandarin literacy" },
+    { value: "science", label: isZh ? "學校科目：自然 / 科學" : "School subject: Science" },
+    { value: "social-studies", label: isZh ? "學校科目：社會 / 歷史地理" : "School subject: Social studies" },
+    { value: "exam-cert", label: isZh ? "準備考試 / 證照" : "Exam / certification" },
+    { value: "self-study", label: isZh ? "其他自學內容" : "Self-study" },
+    { value: "general", label: isZh ? "通用內容" : "General content" },
+  ];
+
+  if (
+    activeGoal?.domain === "school-subject" &&
+    activeGoal.subject &&
+    !schoolSubjectOptionValues.has(activeGoal.subject)
+  ) {
+    options.splice(5, 0, {
+      value: activeGoal.subject,
+      label: isZh ? `學校科目：${activeGoal.subject}` : `School subject: ${activeGoal.subject}`,
+    });
+  }
+
+  return options;
+}
+
+function initialSubjectForGoal(goal?: LearningGoal): SubjectArea {
+  if (!goal) {
+    return "language";
+  }
+
+  if (goal.domain === "school-subject") {
+    return goal.subject || "math";
+  }
+
+  if (goal.domain === "language") {
+    return "language";
+  }
+
+  return goal.domain;
+}
+
+function domainForSubjectOption(subject: SubjectArea, activeGoal?: LearningGoal): LearningDomain {
+  if (
+    subject === "math" ||
+    subject === "mandarin-literacy" ||
+    subject === "science" ||
+    subject === "social-studies" ||
+    (activeGoal?.domain === "school-subject" && subject === activeGoal.subject)
+  ) {
+    return "school-subject";
+  }
+
+  return normalizeLearningDomain(subject);
+}
 
 export function AiLearningForm({
   locale,
+  activeGoal,
   initialPlans,
   usageSummary
 }: {
   locale: AppLocale;
+  activeGoal?: LearningGoal;
   initialPlans: GeneratedLearningPlan[];
   usageSummary: {
     dailyOfficialLimit: number;
@@ -80,8 +162,10 @@ export function AiLearningForm({
   };
 }) {
   const text = copy(locale);
+  const goalRows = getLearningGoalSummaryRows(activeGoal, locale).slice(0, 4);
   const [sourceType, setSourceType] = useState<LearningSourceType>("topic");
-  const [subject, setSubject] = useState<SubjectArea>("language");
+  const [subject, setSubject] = useState<SubjectArea>(() => initialSubjectForGoal(activeGoal));
+  const [targetLanguage, setTargetLanguage] = useState<TargetLanguage>(activeGoal?.targetLanguage ?? "english");
   const [providerMode, setProviderMode] = useState<AIProviderMode>("official");
   const [title, setTitle] = useState("");
   const [rawText, setRawText] = useState("");
@@ -106,6 +190,8 @@ export function AiLearningForm({
       body: JSON.stringify({
         sourceType,
         subject,
+        domain: domainForSubjectOption(subject, activeGoal),
+        targetLanguage,
         providerMode,
         title,
         rawText: rawText || title,
@@ -227,6 +313,24 @@ export function AiLearningForm({
   return (
     <div className="stack ai-learning-shell">
       <form className="review-card stack ai-learning-form" onSubmit={onSubmit}>
+        <div className="muted-box ai-goal-context">
+          <div className="eyebrow">{text.activeGoal}</div>
+          {activeGoal ? (
+            <>
+              <strong>{activeGoal.title}</strong>
+              <div className="goal-summary-strip">
+                {goalRows.map((row) => (
+                  <span className="goal-summary-chip" key={row.label}>
+                    <strong>{row.label}</strong>
+                    {row.value}
+                  </span>
+                ))}
+              </div>
+            </>
+          ) : (
+            <p className="subtle">{text.noGoal}</p>
+          )}
+        </div>
         <div className="muted-box ai-usage-box">
           <div className="eyebrow">AI quota</div>
           <p className="subtle">
@@ -246,11 +350,21 @@ export function AiLearningForm({
           <label className="field">
             {text.subject}
             <select value={subject} onChange={(event) => setSubject(event.target.value as SubjectArea)}>
-              {subjectOptions.map((option) => (
+              {subjectOptions(locale, activeGoal).map((option) => (
                 <option key={option.value} value={option.value}>{option.label}</option>
               ))}
             </select>
           </label>
+          {subject === "language" ? (
+            <label className="field">
+              {locale === "zh-TW" ? "目標語言" : "Target language"}
+              <select value={targetLanguage} onChange={(event) => setTargetLanguage(event.target.value as TargetLanguage)}>
+                {targetLanguageOptions.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </label>
+          ) : null}
           <label className="field">
             {text.provider}
             <select value={providerMode} onChange={(event) => setProviderMode(event.target.value as AIProviderMode)}>
@@ -263,7 +377,7 @@ export function AiLearningForm({
 
         <label className="field">
           {text.title}
-          <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Airport small talk, TOEIC email, fractions..." />
+          <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder={text.titlePlaceholder} />
         </label>
 
         <label className="field">
@@ -463,7 +577,7 @@ export function AiLearningForm({
               <div>
                 <h2 className="section-title">{plan.days[0]?.title ?? plan.subject}</h2>
                 <p className="subtle">
-                  {plan.days.length} days · {plan.level} · {plan.providerMode} · ${plan.costEstimateUsd.toFixed(4)}
+                  {learningDomainLabel(plan.domain, locale)} · {subjectDisplayLabel(plan.subject, locale)} · {plan.days.length} days · {plan.level} · {plan.providerMode} · ${plan.costEstimateUsd.toFixed(4)}
                 </p>
                 {plan.qualityWarnings.length > 0 ? (
                   <p className="subtle">{text.warnings}: {plan.qualityWarnings.join(" ")}</p>

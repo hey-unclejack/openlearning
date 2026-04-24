@@ -1,16 +1,49 @@
 export type ProficiencyLevel = "A1" | "A2" | "B1" | "B2";
-export type TargetLanguage = "english";
+export type LearningDomain =
+  | "language"
+  | "school-subject"
+  | "exam-cert"
+  | "self-study"
+  | "mandarin-literacy"
+  | "math"
+  | "general";
+export type TargetLanguage = "english" | "japanese" | "korean";
 export type NativeLanguage = "zh-TW";
 export type LearningFocus = "travel" | "daily" | "work" | "exam";
-export type SubjectArea = "language" | "math" | "chinese";
+export type LearningPurpose =
+  | LearningFocus
+  | "reading-writing"
+  | "problem-solving"
+  | "content-mastery"
+  | "school-grade"
+  | "score-improvement"
+  | "exam-prep"
+  | "certification"
+  | "project"
+  | "knowledge";
+export type SubjectArea = LearningDomain | "chinese" | "science" | "social-studies" | (string & {});
 export type CourseStage = "foundation" | "mobility" | "daily" | "work";
-export type LearningType =
+export type SkillDimension =
+  | "translation"
   | "sentence-translation"
   | "vocabulary"
   | "listening"
   | "speaking"
   | "writing"
-  | "grammar";
+  | "grammar"
+  | "comprehension"
+  | "main-idea"
+  | "rewrite"
+  | "summary"
+  | "concept"
+  | "procedure"
+  | "calculation"
+  | "word-problem"
+  | "error-analysis"
+  | "recall"
+  | "application"
+  | "explanation";
+export type LearningType = SkillDimension;
 export type InteractionType =
   | "tap-assemble"
   | "type-translation"
@@ -38,13 +71,108 @@ export type AIApplicationPermission =
   | "course_optimization"
   | "learning_optimization";
 export type GeneratedPlanStatus = "draft" | "active" | "completed" | "failed";
+export type LearnerKind = "self" | "supervised-student";
+export type SupervisorRole = "parent" | "teacher";
+export type AccountMode = "supervisor" | "child";
+export type ClassInviteStatus = "active" | "disabled" | "expired";
+export type ClassEnrollmentStatus = "active" | "archived";
+export type ClassGoalSyncPolicy = "append-new-content";
 
 export interface LearnerProfile {
+  activeGoalId?: string;
+  goals?: LearningGoal[];
   targetLanguage: TargetLanguage;
   nativeLanguage: NativeLanguage;
   level: ProficiencyLevel;
   dailyMinutes: number;
   focus: LearningFocus;
+}
+
+export interface LearningGoal {
+  id: string;
+  ownerLearnerId?: string;
+  domain: LearningDomain;
+  title: string;
+  targetLanguage?: TargetLanguage;
+  nativeLanguage?: NativeLanguage;
+  subject?: string;
+  level: ProficiencyLevel;
+  purpose: LearningPurpose;
+  dailyMinutes: number;
+  metadata?: Record<string, string | number | boolean>;
+  createdAt?: string;
+  updatedAt?: string;
+  archivedAt?: string;
+  templateId?: string;
+  classroomId?: string;
+  templateVersion?: number;
+  managedByTeacher?: boolean;
+}
+
+export interface LearnerRestrictions {
+  learningOnly: boolean;
+  canEditGoals: boolean;
+  canUseAiIntake: boolean;
+}
+
+export interface LearnerSpace {
+  id: string;
+  displayName: string;
+  kind: LearnerKind;
+  supervisorRole?: SupervisorRole;
+  profile: LearnerProfile;
+  restrictions: LearnerRestrictions;
+  archivedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface Classroom {
+  id: string;
+  teacherAccountId: string;
+  title: string;
+  schoolName?: string;
+  gradeBand?: string;
+  archivedAt?: string;
+  createdAt: string;
+}
+
+export interface ClassGoalTemplate {
+  id: string;
+  classroomId: string;
+  sourceGoalId: string;
+  title: string;
+  domain: LearningDomain;
+  subject?: string;
+  level: ProficiencyLevel;
+  purpose: LearningPurpose;
+  dailyMinutes: number;
+  templateVersion: number;
+  syncPolicy: ClassGoalSyncPolicy;
+  metadata?: Record<string, string | number | boolean>;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface ClassInvite {
+  id: string;
+  classroomId: string;
+  templateId: string;
+  code: string;
+  status: ClassInviteStatus;
+  expiresAt?: string;
+  createdAt: string;
+}
+
+export interface ClassEnrollment {
+  id: string;
+  classroomId: string;
+  templateId: string;
+  parentAccountId: string;
+  childLearnerId: string;
+  assignedGoalId: string;
+  status: ClassEnrollmentStatus;
+  joinedAt: string;
 }
 
 export interface StudyPlanDay {
@@ -87,6 +215,7 @@ export type LearningPerformance = Partial<Record<LearningType, LearningPerforman
 export interface PracticeQuestion {
   id: string;
   learningType?: LearningType;
+  skillDimension?: SkillDimension;
   prompt: string;
   answer: string;
   hint: string;
@@ -107,6 +236,9 @@ export interface LessonAsset {
 export interface LearningSource {
   id: string;
   type: LearningSourceType;
+  learnerId?: string;
+  goalId?: string;
+  domain: LearningDomain;
   subject: SubjectArea;
   title: string;
   rawText: string;
@@ -133,6 +265,9 @@ export interface GeneratedPlanDay {
 export interface GeneratedLearningPlan {
   id: string;
   sourceId: string;
+  learnerId?: string;
+  goalId?: string;
+  domain: LearningDomain;
   subject: SubjectArea;
   providerMode: AIProviderMode;
   model: string;
@@ -183,6 +318,8 @@ export interface AIUsageLog {
 export interface CourseLesson {
   id: string;
   unitId: string;
+  goalId?: string;
+  domain?: LearningDomain;
   lessonNumber: number;
   dayNumber: number;
   title: string;
@@ -206,6 +343,7 @@ export interface CourseTrack {
   id: string;
   title: string;
   language: TargetLanguage;
+  goalId?: string;
   units: CourseUnit[];
 }
 
@@ -217,6 +355,10 @@ export interface ReviewItem {
   tags: string[];
   lessonId: string;
   unitId: string;
+  learnerId?: string;
+  goalId?: string;
+  domain?: LearningDomain;
+  skillDimension: SkillDimension;
   learningType: LearningType;
   importance: ReviewImportance;
   easeFactor: number;
@@ -240,6 +382,10 @@ export interface ReviewLog {
   responseMs?: number;
   lessonId?: string;
   unitId?: string;
+  learnerId?: string;
+  goalId?: string;
+  domain?: LearningDomain;
+  skillDimension?: SkillDimension;
   learningType?: LearningType;
   outcome?: "correct" | "incorrect";
 }
@@ -247,6 +393,10 @@ export interface ReviewLog {
 export interface AppState {
   onboarded: boolean;
   streak: number;
+  accountMode?: AccountMode;
+  supervisorPinHash?: string;
+  activeLearnerId?: string;
+  learners?: LearnerSpace[];
   profile?: LearnerProfile;
   currentDay: number;
   courseTrack: CourseTrack;
@@ -259,4 +409,8 @@ export interface AppState {
   aiSettings: AISettings;
   aiProviderConnections: AIProviderConnection[];
   aiUsageLogs: AIUsageLog[];
+  classrooms: Classroom[];
+  classGoalTemplates: ClassGoalTemplate[];
+  classInvites: ClassInvite[];
+  classEnrollments: ClassEnrollment[];
 }

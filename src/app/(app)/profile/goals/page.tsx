@@ -4,6 +4,7 @@ import { getLocaleCopy } from "@/lib/i18n";
 import { getLocale } from "@/lib/i18n-server";
 import { readState } from "@/lib/store";
 import { getCurrentUser, getSessionIdFromHeaders } from "@/lib/session";
+import { getActiveLearningGoal, getLearningGoalSummaryRows } from "@/lib/learning-goals";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
@@ -19,6 +20,8 @@ export default async function ProfileGoalsPage({
   const locale = await getLocale();
   const copy = getLocaleCopy(locale);
   const { next, edit } = await searchParams;
+  const activeGoal = state.profile ? getActiveLearningGoal(state.profile) : undefined;
+  const summaryRows = getLearningGoalSummaryRows(activeGoal, locale);
   const nextPath = next?.startsWith("/") ? next : "/dashboard";
   const isEditing = edit === "1" || !state.onboarded;
   const profileDefaults = state.onboarded && edit !== "1"
@@ -27,7 +30,9 @@ export default async function ProfileGoalsPage({
         focus: state.profile?.focus,
         level: state.profile?.level,
         nativeLanguage: state.profile?.nativeLanguage,
-        targetLanguage: state.profile?.targetLanguage
+        targetLanguage: state.profile?.targetLanguage,
+        domain: activeGoal?.domain,
+        subject: activeGoal?.subject
       }
     : undefined;
 
@@ -60,36 +65,22 @@ export default async function ProfileGoalsPage({
                 <p className="subtle">{copy.onboarding.completeBody}</p>
                 <div className="muted-box onboarding-summary">
                   <div className="onboarding-summary-grid">
-                    <div className="onboarding-summary-item">
-                      <span className="onboarding-summary-label">{copy.onboarding.nativeLanguage}</span>
-                      <strong className="onboarding-summary-value">
-                        {state.profile ? copy.profileLabels.nativeLanguage[state.profile.nativeLanguage] : "-"}
-                      </strong>
-                    </div>
-                    <div className="onboarding-summary-item">
-                      <span className="onboarding-summary-label">{copy.onboarding.targetLanguage}</span>
-                      <strong className="onboarding-summary-value">
-                        {state.profile ? copy.profileLabels.targetLanguage[state.profile.targetLanguage] : "-"}
-                      </strong>
-                    </div>
-                    <div className="onboarding-summary-item">
-                      <span className="onboarding-summary-label">{copy.onboarding.level}</span>
-                      <strong className="onboarding-summary-value">
-                        {state.profile ? copy.profileLabels.levelTitle[state.profile.level] : "-"}
-                      </strong>
-                    </div>
-                    <div className="onboarding-summary-item">
-                      <span className="onboarding-summary-label">{copy.onboarding.focus}</span>
-                      <strong className="onboarding-summary-value">
-                        {state.profile ? copy.profileLabels.focus[state.profile.focus] : "-"}
-                      </strong>
-                    </div>
                     <div className="onboarding-summary-item onboarding-summary-item-wide">
-                      <span className="onboarding-summary-label">{copy.onboarding.dailyMinutes}</span>
-                      <strong className="onboarding-summary-value">
-                        {state.profile ? copy.onboarding.minutesValue(state.profile.dailyMinutes) : "-"}
-                      </strong>
+                      <span className="onboarding-summary-label">{copy.onboarding.learningDomain}</span>
+                      <strong className="onboarding-summary-value">{activeGoal?.title ?? "-"}</strong>
                     </div>
+                    {summaryRows.map((row) => (
+                      <div className="onboarding-summary-item" key={row.label}>
+                        <span className="onboarding-summary-label">{row.label}</span>
+                        <strong className="onboarding-summary-value">{row.value}</strong>
+                      </div>
+                    ))}
+                    {state.profile ? (
+                      <div className="onboarding-summary-item">
+                        <span className="onboarding-summary-label">{copy.onboarding.level}</span>
+                        <strong className="onboarding-summary-value">{copy.profileLabels.levelTitle[state.profile.level]}</strong>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
                 <Link className="button onboarding-reset-button profile-page-actions" href="/profile/goals?edit=1">

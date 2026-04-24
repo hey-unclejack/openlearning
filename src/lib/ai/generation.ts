@@ -1,10 +1,22 @@
 import { decryptCredential } from "@/lib/ai/credentials";
+import {
+  canonicalSubjectForDomain,
+  defaultSkillDimensionForDomain,
+  getActiveLearningGoal,
+  getSkillDimensionsForDomain,
+  languageTargetLabels,
+  legacyLearningTypeForSkill,
+  normalizeLearningDomain,
+  normalizeSkillDimension,
+} from "@/lib/learning-goals";
+import { DEFAULT_LEARNER_ID, getActiveLearner } from "@/lib/learner-spaces";
 import { getAiUsageSummary, readState, saveGeneratedLearningPlan } from "@/lib/store";
 import {
   AIProviderMode,
   AIUsageLog,
   GeneratedLearningPlan,
   GeneratedPlanDay,
+  LearningDomain,
   LearningFocus,
   LearningSource,
   LearningSourceType,
@@ -16,7 +28,10 @@ import {
 type GenerateLearningPlanInput = {
   sessionId: string;
   sourceType: LearningSourceType;
+  goalId?: string;
+  domain?: LearningDomain;
   subject?: SubjectArea;
+  targetLanguage?: string;
   title: string;
   rawText: string;
   sourceUrl?: string;
@@ -36,7 +51,9 @@ type ProviderResult = {
   usedProviderMode: AIProviderMode;
 };
 
-const LEARNING_TYPES: LearningType[] = ["sentence-translation", "vocabulary", "listening", "speaking", "writing", "grammar"];
+function skillDimensionsForSource(source: Pick<LearningSource, "domain" | "subject">): LearningType[] {
+  return getSkillDimensionsForDomain(source.domain ?? normalizeLearningDomain(source.subject));
+}
 const MAX_SOURCE_CHARS = Number(process.env.AI_MAX_SOURCE_CHARS ?? 12000);
 const BLOCKED_SOURCE_PATTERNS = [
   /how\s+to\s+make\s+(a\s+)?bomb/i,
@@ -170,19 +187,31 @@ function focusLabel(focus: LearningFocus) {
 }
 
 function subjectLabel(subject: SubjectArea) {
+  const domain = normalizeLearningDomain(subject);
+
   return {
-    language: "English language learning",
-    math: "math learning",
-    chinese: "Mandarin literacy learning",
-  }[subject];
+    language: "language learning",
+    "school-subject": "school subject learning",
+    "exam-cert": "exam and certification preparation",
+    "self-study": "self-directed learning",
+    math: "math problem-solving",
+    "mandarin-literacy": "Mandarin literacy learning",
+    general: "personal content learning",
+  }[domain];
 }
 
 function subjectPromptGuidance(subject: SubjectArea) {
+  const domain = normalizeLearningDomain(subject);
+
   return {
-    language: "For language lessons, practice prompts should be in Traditional Chinese and target answers should be natural English.",
-    math: "For math lessons, use Traditional Chinese explanations, include step-by-step reasoning, short checks, and review seeds for formulas or concepts. Answers may be numbers, formulas, or concise Chinese explanations.",
-    chinese: "For Mandarin literacy lessons, use Traditional Chinese, focus on comprehension, vocabulary, main idea, sentence rewriting, and reading strategy.",
-  }[subject];
+    language: "For language lessons, practice prompts should be in Traditional Chinese and target answers should be in the learner's target language. Use translation, vocabulary, listening, speaking, writing, or grammar skills.",
+    "school-subject": "For school subject lessons, use Traditional Chinese explanations, focus on concepts, examples, procedures, comprehension, and application. Do not create English translation or speaking prompts unless the subject is a language.",
+    "exam-cert": "For exam or certification prep, use Traditional Chinese explanations, focus on high-yield recall, concepts, applied questions, error analysis, and timed review. Do not create unrelated language translation prompts.",
+    "self-study": "For self-directed learning, use Traditional Chinese prompts and focus on recall, concepts, application, summaries, and explanations that help the learner use the material.",
+    math: "For math lessons, use Traditional Chinese explanations, include step-by-step reasoning, short checks, and review seeds for formulas or concepts. Answers may be numbers, formulas, or concise Chinese explanations. Do not create language translation, English speaking, or listening prompts.",
+    "mandarin-literacy": "For Mandarin literacy lessons, use Traditional Chinese, focus on comprehension, vocabulary, main idea, sentence rewriting, summary, and reading strategy. Do not create English translation prompts.",
+    general: "For general content lessons, use Traditional Chinese prompts and focus on recall, concepts, application, summaries, and explanations. Do not create language translation, English speaking, or listening prompts unless the source itself asks for language practice.",
+  }[domain];
 }
 
 function estimateCostUsd(promptTokens: number, completionTokens: number) {
@@ -199,6 +228,8 @@ function buildPrompt(params: {
   return [
     "You are building a structured learning plan for OpenLearning.",
     `Subject: ${subjectLabel(params.source.subject)}.`,
+    `Learning domain: ${params.source.domain}.`,
+    params.source.metadata?.targetLanguage ? `Target language: ${String(params.source.metadata.targetLanguage)}.` : "",
     `Learner level: ${params.level}. ${levelInstruction(params.level)}`,
     `Focus: ${focusLabel(params.focus)}. Daily time: ${params.dailyMinutes} minutes.`,
     `Create exactly ${params.dayCount} short lessons.`,
@@ -216,6 +247,54 @@ function coerceStringArray(value: unknown, fallback: string[]) {
   }
 
   return value.map((item) => String(item).trim()).filter(Boolean).slice(0, 6);
+}
+
+function fallbackHintForDomain(domain: LearningDomain) {
+  return {
+    language: "先抓主詞、動詞和核心意思。",
+    "school-subject": "先抓概念，再連到例子或題目。",
+    "exam-cert": "先回想考點，再用題目檢查。",
+    "self-study": "先回想核心概念，再用自己的話回答。",
+    math: "先寫已知條件，再列出步驟。",
+    "mandarin-literacy": "先找關鍵詞，再整理句意。",
+    general: "先回想核心概念，再用自己的話回答。",
+  }[domain];
+}
+
+function fallbackPromptForSkill(domain: LearningDomain, skill: LearningType, seedFront?: string) {
+  const content = seedFront ?? "這個內容的核心重點";
+
+  if (domain === "math") {
+    return skill === "calculation"
+      ? `完成這題的計算或檢查：${content}`
+      : `說明這題需要的解題步驟：${content}`;
+  }
+
+  if (domain === "mandarin-literacy") {
+    return skill === "summary" || skill === "main-idea"
+      ? `用一句話整理主旨：${content}`
+      : `回答這段內容的理解問題：${content}`;
+  }
+
+  if (domain === "general" || domain === "self-study") {
+    return skill === "application"
+      ? `把這個概念用在一個具體情境：${content}`
+      : `用自己的話回想這個重點：${content}`;
+  }
+
+  if (domain === "school-subject") {
+    return skill === "application"
+      ? `把這個概念用在一題或一個例子：${content}`
+      : `說明這個科目重點：${content}`;
+  }
+
+  if (domain === "exam-cert") {
+    return skill === "error-analysis"
+      ? `找出這個考點最容易錯的地方：${content}`
+      : `用考試角度回想這個重點：${content}`;
+  }
+
+  return `翻成目標語言：${content}`;
 }
 
 function parseProviderJson(value: string, source: LearningSource, dayCount: number): GeneratedPlanDay[] | null {
@@ -236,6 +315,7 @@ function parseProviderJson(value: string, source: LearningSource, dayCount: numb
 
     return days.map((day, index) => {
       const lessonId = makeId(`generated-lesson-${index + 1}`);
+      const skillDimensions = skillDimensionsForSource(source);
       const vocabulary = coerceStringArray(day.vocabulary, ["context", "practice", "review"]);
       const chunks = coerceStringArray(day.chunks, ["I can use this in context.", "Let me try that again."]);
       const dialogue = coerceStringArray(day.dialogue, [
@@ -250,7 +330,7 @@ function parseProviderJson(value: string, source: LearningSource, dayCount: numb
               front: String(record.front ?? `複習重點 ${seedIndex + 1}`),
               back: String(record.back ?? chunks[seedIndex % chunks.length] ?? chunks[0]),
               hint: String(record.hint ?? "抓核心語塊"),
-              tags: [source.subject, source.type],
+              tags: [source.domain, source.subject, source.type],
             };
           })
         : [];
@@ -272,13 +352,18 @@ function parseProviderJson(value: string, source: LearningSource, dayCount: numb
           personalizationNote: "AI 依照你的程度、每日時間與導入內容生成這一課。",
           practice: Array.isArray(day.practice)
             ? day.practice.slice(0, 5).map((question, questionIndex) => {
-                const record = question as Record<string, unknown>;
-                return {
-                  id: `${lessonId}-practice-${questionIndex + 1}`,
-                  learningType: LEARNING_TYPES[questionIndex % LEARNING_TYPES.length],
-                  prompt: String(record.prompt ?? `翻成英文：${reviewSeeds[questionIndex]?.front ?? "我想練習這個內容。"}`),
+              const record = question as Record<string, unknown>;
+              const skillDimension = normalizeSkillDimension(
+                String(record.skillDimension ?? record.learningType ?? skillDimensions[questionIndex % skillDimensions.length]),
+                source.domain,
+              );
+              return {
+                id: `${lessonId}-practice-${questionIndex + 1}`,
+                  skillDimension,
+                  learningType: legacyLearningTypeForSkill(skillDimension),
+                  prompt: String(record.prompt ?? fallbackPromptForSkill(source.domain, skillDimension, reviewSeeds[questionIndex]?.front)),
                   answer: String(record.answer ?? reviewSeeds[questionIndex]?.back ?? chunks[0]),
-                  hint: String(record.hint ?? "先找主詞和核心動詞。"),
+                  hint: String(record.hint ?? fallbackHintForDomain(source.domain)),
                 };
               })
             : [],
@@ -294,6 +379,7 @@ function parseProviderJson(value: string, source: LearningSource, dayCount: numb
 export function validateGeneratedDays(days: GeneratedPlanDay[], source: LearningSource, expectedDayCount: number): QualityResult {
   const warnings: string[] = [];
   const ids = new Set<string>();
+  const domain = source.domain ?? normalizeLearningDomain(source.subject);
 
   if (days.length !== expectedDayCount) {
     warnings.push(`Expected ${expectedDayCount} generated days but received ${days.length}.`);
@@ -340,7 +426,7 @@ export function validateGeneratedDays(days: GeneratedPlanDay[], source: Learning
     });
   });
 
-  if (source.subject === "math") {
+  if (domain === "math") {
     const text = days.flatMap((day) => [
       day.title,
       day.objective,
@@ -354,7 +440,7 @@ export function validateGeneratedDays(days: GeneratedPlanDay[], source: Learning
     }
   }
 
-  if (source.subject === "chinese") {
+  if (domain === "mandarin-literacy") {
     const text = days.flatMap((day) => [
       day.title,
       day.objective,
@@ -364,6 +450,19 @@ export function validateGeneratedDays(days: GeneratedPlanDay[], source: Learning
 
     if (/翻成英文|English sentence|speak English/i.test(text)) {
       warnings.push("Mandarin generated content appears to contain language-translation instructions.");
+    }
+  }
+
+  if (domain === "general" || domain === "self-study" || domain === "school-subject" || domain === "exam-cert") {
+    const text = days.flatMap((day) => [
+      day.title,
+      day.objective,
+      day.asset.intro,
+      ...day.asset.practice.map((question) => `${question.prompt} ${question.answer}`),
+    ]).join(" ");
+
+    if (/翻成英文|English sentence|speak English|聽後選答|聽寫/i.test(text)) {
+      warnings.push("Generated content appears to contain unrelated language-specific practice instructions.");
     }
   }
 
@@ -392,8 +491,9 @@ function buildSubjectLessonParts(params: {
   dailyMinutes: number;
 }) {
   const { subject, lessonId, fallbackTopic, sourceLine } = params;
+  const domain = normalizeLearningDomain(subject);
 
-  if (subject === "math") {
+  if (domain === "math") {
     const vocabulary = ["已知條件", "列式", "計算", "檢查", fallbackTopic].slice(0, 5);
     const chunks = [
       "先圈出題目給的數字與條件。",
@@ -438,14 +538,16 @@ function buildSubjectLessonParts(params: {
       practice: [
         {
           id: `${lessonId}-practice-1`,
-          learningType: "grammar" as const,
+          skillDimension: "procedure" as const,
+          learningType: "procedure" as const,
           prompt: `把題目拆成已知條件與要求：${sourceLine.slice(0, 90)}`,
           answer: "先找已知條件，再找題目要求。",
           hint: "先拆題，再列式。",
         },
         {
           id: `${lessonId}-practice-2`,
-          learningType: "writing" as const,
+          skillDimension: "concept" as const,
+          learningType: "concept" as const,
           prompt: "用一句話寫出你的解題策略。",
           answer: "我會先列出已知條件，再寫算式並檢查答案。",
           hint: "已知條件 -> 算式 -> 檢查",
@@ -455,7 +557,7 @@ function buildSubjectLessonParts(params: {
     };
   }
 
-  if (subject === "chinese") {
+  if (domain === "mandarin-literacy") {
     const vocabulary = ["主旨", "關鍵詞", "段落", "句意", fallbackTopic].slice(0, 5);
     const chunks = [
       "先找出這段文字最重要的人、事、物。",
@@ -500,6 +602,7 @@ function buildSubjectLessonParts(params: {
       practice: [
         {
           id: `${lessonId}-practice-1`,
+          skillDimension: "comprehension" as const,
           learningType: "vocabulary" as const,
           prompt: `找出這段文字的關鍵詞：${sourceLine.slice(0, 90)}`,
           answer: extractKeywords(sourceLine, fallbackTopic)[0] ?? fallbackTopic,
@@ -507,10 +610,79 @@ function buildSubjectLessonParts(params: {
         },
         {
           id: `${lessonId}-practice-2`,
+          skillDimension: "main-idea" as const,
           learningType: "writing" as const,
           prompt: "用一句完整的話寫出這段文字的主旨。",
           answer: sourceLine.slice(0, 72),
           hint: "不要只抄一個詞，要寫成一句話。",
+        },
+      ],
+      reviewSeeds,
+    };
+  }
+
+  if (domain === "general" || domain === "self-study" || domain === "school-subject" || domain === "exam-cert") {
+    const vocabulary = ["核心概念", "關鍵細節", "例子", "應用", fallbackTopic].slice(0, 5);
+    const chunks = [
+      "先用自己的話回想核心概念。",
+      "再說出一個支持這個概念的細節。",
+      "最後把它用到一個具體情境。",
+    ];
+    const dialogue = [
+      "Coach: 這段內容最重要的概念是什麼？",
+      `Learner: 我先抓到的重點是 ${sourceLine.slice(0, 72)}。`,
+      "Coach: 好，接著說明它可以怎麼被使用。",
+    ];
+    const reviewSeeds = [
+      {
+        id: `${lessonId}-review-1`,
+        front: "回想內容時第一步是什麼？",
+        back: "先用自己的話說出核心概念。",
+        hint: "不要只背原句",
+        tags: [domain, "recall", "ai-generated"],
+      },
+      {
+        id: `${lessonId}-review-2`,
+        front: "如何確認自己真的理解？",
+        back: "能說出例子或應用情境。",
+        hint: "例子或應用",
+        tags: [domain, "application", "ai-generated"],
+      },
+      {
+        id: `${lessonId}-review-3`,
+        front: "摘要應該保留什麼？",
+        back: "保留核心概念、關鍵細節和用途。",
+        hint: "三件事",
+        tags: [domain, "summary", "ai-generated"],
+      },
+    ];
+
+    return {
+      vocabulary,
+      chunks,
+      dialogue,
+      intro: domain === "exam-cert"
+        ? "這一課把考試內容拆成考點回想、題型理解、錯誤檢查三個短任務。"
+        : domain === "school-subject"
+          ? "這一課把科目內容拆成概念理解、例題連結、應用檢查三個短任務。"
+          : "這一課把你導入的內容拆成回想、理解、應用三個短任務。",
+      coachingNote: `以 ${params.dailyMinutes} 分鐘練習：先回想，再摘要，最後說出一個應用方式。`,
+      practice: [
+        {
+          id: `${lessonId}-practice-1`,
+          skillDimension: "recall" as const,
+          learningType: "recall" as const,
+          prompt: `用自己的話回想這段內容的核心重點：${sourceLine.slice(0, 90)}`,
+          answer: sourceLine.slice(0, 90),
+          hint: "先說概念，不必逐字背。",
+        },
+        {
+          id: `${lessonId}-practice-2`,
+          skillDimension: "application" as const,
+          learningType: "application" as const,
+          prompt: "寫出這個概念可以用在哪一個情境。",
+          answer: `可以用來理解或處理：${fallbackTopic}`,
+          hint: "連到一個具體例子。",
         },
       ],
       reviewSeeds,
@@ -561,6 +733,7 @@ function buildSubjectLessonParts(params: {
     practice: [
       {
         id: `${lessonId}-practice-1`,
+        skillDimension: "translation" as const,
         learningType: "sentence-translation" as const,
         prompt: `翻成英文：我想談談 ${fallbackTopic}。`,
         answer: `I want to talk about ${fallbackTopic}.`,
@@ -568,6 +741,7 @@ function buildSubjectLessonParts(params: {
       },
       {
         id: `${lessonId}-practice-2`,
+        skillDimension: "writing" as const,
         learningType: "writing" as const,
         prompt: `用英文寫一句話說明這個重點：${sourceLine.slice(0, 80)}`,
         answer: `The key point is ${sourceLine.slice(0, 72)}.`,
@@ -996,6 +1170,15 @@ export async function generateLearningPlan(input: GenerateLearningPlanInput) {
 
   const state = await readState(input.sessionId);
   const profile = state.profile;
+  const activeLearner = getActiveLearner(state);
+  const activeGoal = profile ? getActiveLearningGoal(profile) : undefined;
+  const domain = input.domain ?? normalizeLearningDomain(input.subject ?? activeGoal?.domain ?? "language");
+  const requestedSubject = input.subject?.trim();
+  const subject = requestedSubject
+    ? requestedSubject === "chinese"
+      ? "mandarin-literacy"
+      : requestedSubject
+    : canonicalSubjectForDomain(domain);
   const dayCount = Math.min(Math.max(input.dayCount ?? 3, 3), 7);
   const providerMode = input.providerMode ?? "official";
   const usageSummary = await getAiUsageSummary(input.sessionId);
@@ -1024,13 +1207,20 @@ export async function generateLearningPlan(input: GenerateLearningPlanInput) {
   const source: LearningSource = {
     id: makeId("source"),
     type: input.sourceType,
-    subject: input.subject ?? "language",
+    learnerId: activeLearner?.id ?? DEFAULT_LEARNER_ID,
+    goalId: input.goalId ?? activeGoal?.id,
+    domain,
+    subject,
     title: input.title.trim() || validation.fetchedTitle || "My learning topic",
     rawText: validation.rawText,
     sourceUrl: input.sourceUrl?.trim() || undefined,
     userOwnsRights: input.userOwnsRights,
     childMode: input.childMode ?? false,
-    metadata: validation.metadata,
+    metadata: {
+      ...validation.metadata,
+      targetLanguage: input.targetLanguage ?? activeGoal?.targetLanguage ?? (domain === "language" ? profile?.targetLanguage : undefined) ?? "",
+      learningGoalTitle: activeGoal?.title ?? "",
+    },
     createdAt: new Date().toISOString(),
   };
   const provider = await generateWithProvider({
@@ -1045,6 +1235,9 @@ export async function generateLearningPlan(input: GenerateLearningPlanInput) {
   const plan: GeneratedLearningPlan = {
     id: makeId("plan"),
     sourceId: source.id,
+    learnerId: source.learnerId,
+    goalId: source.goalId,
+    domain: source.domain,
     subject: source.subject,
     providerMode: provider.usedProviderMode,
     model: provider.model,

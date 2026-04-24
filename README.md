@@ -1,6 +1,6 @@
 # OpenLearning v1
 
-An SRS-first language learning assistant built with Next.js App Router.
+An SRS-first personal learning assistant built with Next.js App Router.
 
 ## What is included
 
@@ -13,6 +13,7 @@ An SRS-first language learning assistant built with Next.js App Router.
 - Practice area with immediate feedback
 - Progress page with plan map and weakness tracking
 - API routes for onboarding and review submission
+- Multi-goal learning model for language, Mandarin literacy, math, and imported content
 
 ## Tech
 

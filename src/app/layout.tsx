@@ -5,7 +5,7 @@ import { getLocale } from "@/lib/i18n-server";
 
 export const metadata: Metadata = {
   title: "OpenLearning",
-  description: "SRS-first language learning assistant"
+  description: "SRS-first personal learning assistant"
 };
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

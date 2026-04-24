@@ -3,7 +3,7 @@ import { generateLearningPlan, validateGeneratedDays } from "@/lib/ai/generation
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { APP_SESSION_COOKIE } from "@/lib/session";
 import { deleteGeneratedLearningPlan, readState, saveGeneratedLearningPlan } from "@/lib/store";
-import { AIProviderMode, AIUsageLog, GeneratedLearningPlan, LearningSource, LearningSourceType, SubjectArea } from "@/lib/types";
+import { AIProviderMode, AIUsageLog, GeneratedLearningPlan, LearningDomain, LearningSource, LearningSourceType, SubjectArea, TargetLanguage } from "@/lib/types";
 
 async function resolveSessionId(request: Request) {
   let sessionId: string | null = null;
@@ -27,7 +27,9 @@ async function resolveSessionId(request: Request) {
 export async function POST(request: Request) {
   const body = (await request.json()) as {
     sourceType?: LearningSourceType;
+    domain?: LearningDomain;
     subject?: SubjectArea;
+    targetLanguage?: TargetLanguage;
     title?: string;
     rawText?: string;
     sourceUrl?: string;
@@ -91,7 +93,9 @@ export async function POST(request: Request) {
   const result = await generateLearningPlan({
     sessionId,
     sourceType: body.sourceType ?? "topic",
+    domain: body.domain,
     subject: body.subject ?? "language",
+    targetLanguage: body.targetLanguage,
     title: body.title ?? "",
     rawText: body.rawText ?? body.title ?? "",
     sourceUrl: body.sourceUrl,

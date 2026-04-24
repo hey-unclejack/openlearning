@@ -2,7 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { encryptCredential, maskCredential } from "@/lib/ai/credentials";
+import { getDashboardSnapshot } from "@/lib/content";
 import { generateLearningPlan } from "@/lib/ai/generation";
+import { getActiveLearningGoal, getNextGeneratedPlanDay, hasFixedCourseTrack } from "@/lib/learning-goals";
 import {
   completeLesson,
   deleteAiProviderConnection,
@@ -130,11 +132,195 @@ test("chinese subject generates reading-comprehension practice", async () => {
   }
 
   const firstDay = result.plan.days[0];
-  assert.equal(result.plan.subject, "chinese");
+  assert.equal(result.plan.subject, "mandarin-literacy");
+  assert.equal(result.plan.domain, "mandarin-literacy");
   assert.match(firstDay.asset.intro, /國文|閱讀/);
   assert.match(firstDay.asset.practice[0].prompt, /關鍵詞/);
   assert.match(firstDay.asset.practice[1].prompt, /主旨/);
-  assert.ok(firstDay.asset.reviewSeeds.every((seed) => seed.tags.includes("chinese")));
+  assert.ok(firstDay.asset.reviewSeeds.every((seed) => seed.tags.includes("mandarin-literacy")));
+});
+
+test("language subject can target Japanese instead of English", async () => {
+  const result = await generateLearningPlan({
+    sessionId: `ai-generation-japanese-${Date.now()}`,
+    sourceType: "topic",
+    domain: "language",
+    subject: "language",
+    targetLanguage: "japanese",
+    title: "便利商店付款",
+    rawText: "便利商店付款",
+    userOwnsRights: true,
+    providerMode: "official",
+    dayCount: 3,
+  });
+
+  assert.equal(result.ok, true);
+
+  if (!result.ok) {
+    return;
+  }
+
+  assert.equal(result.plan.domain, "language");
+  assert.equal(result.source.metadata?.targetLanguage, "japanese");
+});
+
+test("non-English language goals use generated plans instead of fixed curriculum", async () => {
+  const sessionId = `ai-generation-japanese-goal-${Date.now()}`;
+
+  await saveProfile(sessionId, {
+    activeGoalId: "goal-language-japanese-core",
+    goals: [
+      {
+        id: "goal-language-japanese-core",
+        domain: "language",
+        title: "Japanese learning",
+        targetLanguage: "japanese",
+        nativeLanguage: "zh-TW",
+        level: "A2",
+        purpose: "daily",
+        dailyMinutes: 15,
+      },
+    ],
+    targetLanguage: "japanese",
+    nativeLanguage: "zh-TW",
+    level: "A2",
+    dailyMinutes: 15,
+    focus: "daily",
+  });
+
+  const result = await generateLearningPlan({
+    sessionId,
+    sourceType: "topic",
+    domain: "language",
+    subject: "language",
+    targetLanguage: "japanese",
+    title: "買車票",
+    rawText: "買車票",
+    userOwnsRights: true,
+    providerMode: "official",
+    dayCount: 3,
+  });
+
+  assert.equal(result.ok, true);
+
+  if (!result.ok) {
+    return;
+  }
+
+  const state = await readState(sessionId);
+  const activeGoal = getActiveLearningGoal(state.profile!);
+  const nextGenerated = getNextGeneratedPlanDay(state.generatedPlans, activeGoal);
+
+  assert.equal(hasFixedCourseTrack(activeGoal), false);
+  assert.equal(nextGenerated?.plan.id, result.plan.id);
+  assert.equal(nextGenerated?.day.dayNumber, 1);
+});
+
+test("non-fixed goals report progress from generated plans", async () => {
+  const sessionId = `ai-generation-progress-${Date.now()}`;
+
+  await saveProfile(sessionId, {
+    activeGoalId: "goal-general-product",
+    goals: [
+      {
+        id: "goal-general-product",
+        domain: "general",
+        title: "Product spec learning",
+        nativeLanguage: "zh-TW",
+        level: "A2",
+        purpose: "content-mastery",
+        dailyMinutes: 15,
+      },
+    ],
+    targetLanguage: "english",
+    nativeLanguage: "zh-TW",
+    level: "A2",
+    dailyMinutes: 15,
+    focus: "daily",
+  });
+
+  const result = await generateLearningPlan({
+    sessionId,
+    sourceType: "text",
+    domain: "general",
+    subject: "general",
+    title: "通知中心規格",
+    rawText: "通知中心會整合系統訊息、帳務提醒與團隊活動，使用者可以依照重要性篩選與封存。",
+    userOwnsRights: true,
+    providerMode: "official",
+    dayCount: 3,
+  });
+
+  assert.equal(result.ok, true);
+
+  if (!result.ok) {
+    return;
+  }
+
+  const before = await getDashboardSnapshot(sessionId);
+  assert.equal(before.usesFixedCourseTrack, false);
+  assert.equal(before.stats.completedDays, 0);
+  assert.equal(before.stats.planDays, 3);
+
+  await completeLesson(sessionId, result.plan.days[0].lessonId);
+
+  const after = await getDashboardSnapshot(sessionId);
+  assert.equal(after.stats.completedDays, 1);
+  assert.equal(after.stats.planDays, 3);
+});
+
+test("general content subject generates recall and application practice", async () => {
+  const result = await generateLearningPlan({
+    sessionId: `ai-generation-general-${Date.now()}`,
+    sourceType: "text",
+    domain: "general",
+    subject: "general",
+    title: "產品規格摘要",
+    rawText: "這份產品規格說明新的通知中心會整合系統訊息、帳務提醒與團隊活動，使用者可以依照重要性篩選。",
+    userOwnsRights: true,
+    providerMode: "official",
+    dayCount: 3,
+  });
+
+  assert.equal(result.ok, true);
+
+  if (!result.ok) {
+    return;
+  }
+
+  const firstDay = result.plan.days[0];
+  assert.equal(result.plan.domain, "general");
+  assert.match(firstDay.asset.intro, /回想|理解|應用/);
+  assert.ok(firstDay.asset.practice.some((question) => question.skillDimension === "recall"));
+  assert.ok(firstDay.asset.practice.some((question) => question.skillDimension === "application"));
+  assert.doesNotMatch(firstDay.asset.practice.map((question) => question.prompt).join(" "), /翻成英文/);
+});
+
+test("school subject preserves selected subject and avoids language-only prompts", async () => {
+  const result = await generateLearningPlan({
+    sessionId: `ai-generation-school-subject-${Date.now()}`,
+    sourceType: "text",
+    domain: "school-subject",
+    subject: "science",
+    title: "光合作用",
+    rawText: "光合作用會把光能轉換成化學能，植物利用二氧化碳和水產生葡萄糖並釋放氧氣。",
+    userOwnsRights: true,
+    providerMode: "official",
+    dayCount: 3,
+  });
+
+  assert.equal(result.ok, true);
+
+  if (!result.ok) {
+    return;
+  }
+
+  const firstDay = result.plan.days[0];
+  assert.equal(result.plan.domain, "school-subject");
+  assert.equal(result.plan.subject, "science");
+  assert.ok(firstDay.asset.practice.some((question) => question.skillDimension === "recall"));
+  assert.ok(firstDay.asset.practice.some((question) => question.skillDimension === "application"));
+  assert.doesNotMatch(firstDay.asset.practice.map((question) => question.prompt).join(" "), /翻成英文|英文口說|listening/i);
 });
 
 test("rejects imported content when the user has not confirmed rights", async () => {

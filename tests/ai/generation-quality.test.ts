@@ -1,12 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { validateGeneratedDays } from "@/lib/ai/generation";
+import { normalizeLearningDomain } from "@/lib/learning-goals";
 import { GeneratedPlanDay, LearningSource } from "@/lib/types";
 
 function source(subject: LearningSource["subject"]): LearningSource {
   return {
     id: `source-${subject}`,
     type: "text",
+    domain: normalizeLearningDomain(subject),
     subject,
     title: "Quality test",
     rawText: "Quality test content for generated lessons.",

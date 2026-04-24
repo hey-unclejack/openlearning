@@ -1,4 +1,5 @@
 import { buildCourseState } from "@/lib/data/curriculum";
+import { normalizeLearnerProfile } from "@/lib/learning-goals";
 import { AppState, LearnerProfile } from "@/lib/types";
 
 const defaultProfile: LearnerProfile = {
@@ -13,7 +14,7 @@ export function createInitialState(profile: LearnerProfile = defaultProfile): Ap
   return buildCourseState({
     onboarded: false,
     streak: 4,
-    profile,
+    profile: normalizeLearnerProfile(profile),
     currentDay: 1,
     reviewItems: [],
     reviewLogs: []

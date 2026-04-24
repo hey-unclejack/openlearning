@@ -7,7 +7,13 @@ import {
   readState,
 } from "@/lib/store";
 import { getSupabaseAdminClient } from "@/lib/supabase";
-import { LearningType, PracticeQuestion, ReviewLog, ReviewItem } from "@/lib/types";
+import {
+  getActiveLearningGoal,
+  getNextGeneratedPlanDay,
+  hasFixedCourseTrack,
+  normalizeSkillDimension,
+} from "@/lib/learning-goals";
+import { PracticeQuestion, ReviewLog, ReviewItem } from "@/lib/types";
 
 interface DashboardSnapshot {
   profile: Awaited<ReturnType<typeof readState>>["profile"];
@@ -31,6 +37,8 @@ interface DashboardSnapshot {
   recentLogs: ReviewLog[];
   learningTypeBreakdown: ReturnType<typeof deriveLearningTypeBreakdown>;
   lessonHotspots: ReturnType<typeof deriveLessonHotspots>;
+  usesFixedCourseTrack: boolean;
+  generatedPlanDay: ReturnType<typeof getNextGeneratedPlanDay>;
 }
 
 type LearningTypeSummaryRow = {
@@ -81,28 +89,39 @@ async function readDashboardAggregatesFromViews(sessionId: string) {
   }
 }
 
-function isLearningType(value: string): value is LearningType {
-  return ["sentence-translation", "vocabulary", "listening", "speaking", "writing", "grammar"].includes(value);
-}
-
 export async function getDashboardSnapshot(sessionId: string): Promise<DashboardSnapshot> {
   const state = await readState(sessionId);
-  const stats = deriveStats(state);
+  const activeGoal = state.profile ? getActiveLearningGoal(state.profile) : undefined;
+  const usesFixedCourseTrack = hasFixedCourseTrack(activeGoal);
+  const generatedPlansForGoal = state.generatedPlans.filter((plan) => {
+    if (activeGoal?.id && plan.goalId) {
+      return plan.goalId === activeGoal.id;
+    }
+
+    return plan.domain === (activeGoal?.domain ?? "language");
+  });
+  const generatedPlanDays = generatedPlansForGoal.flatMap((plan) => plan.days);
+  const baseStats = deriveStats(state);
+  const stats = usesFixedCourseTrack
+    ? baseStats
+    : {
+        ...baseStats,
+        completedDays: generatedPlanDays.filter((day) => day.completedAt).length,
+        planDays: generatedPlanDays.length,
+      };
   const retentionScore = deriveRetentionScore(state);
   const { planDay, lesson, unit, courseLesson } = await getTodayLesson(sessionId);
   const viewAggregates = await readDashboardAggregatesFromViews(sessionId);
   const learningTypeBreakdown: DashboardSnapshot["learningTypeBreakdown"] = viewAggregates
     ? viewAggregates.learningTypeRows
         .flatMap((row) =>
-          isLearningType(row.learning_type)
-            ? [
-                {
-                  learningType: row.learning_type,
-                  attempts: Number(row.attempts ?? 0),
-                  accuracy: Number(row.accuracy ?? 0),
-                },
-              ]
-            : [],
+          [
+            {
+              learningType: normalizeSkillDimension(row.learning_type),
+              attempts: Number(row.attempts ?? 0),
+              accuracy: Number(row.accuracy ?? 0),
+            },
+          ],
         )
         .sort((a, b) => a.accuracy - b.accuracy)
     : deriveLearningTypeBreakdown(state);
@@ -126,7 +145,9 @@ export async function getDashboardSnapshot(sessionId: string): Promise<Dashboard
     courseLesson,
     recentLogs: state.reviewLogs.slice(0, 5),
     learningTypeBreakdown,
-    lessonHotspots
+    lessonHotspots,
+    usesFixedCourseTrack,
+    generatedPlanDay: getNextGeneratedPlanDay(state.generatedPlans, activeGoal),
   };
 }
 

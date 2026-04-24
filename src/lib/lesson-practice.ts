@@ -1,8 +1,9 @@
 import { getWeakLearningTypes } from "@/lib/practice-performance";
+import { legacyLearningTypeForSkill, normalizeSkillDimension } from "@/lib/learning-goals";
 import {
+  LearningDomain,
   LearningFocus,
   LearningPerformance,
-  LearningType,
   LessonReviewSeed,
   PracticeQuestion,
   ProficiencyLevel
@@ -147,12 +148,13 @@ export function selectPracticePlan(params: {
   focus?: LearningFocus;
   dailyMinutes?: number;
   performance?: LearningPerformance;
+  domain?: LearningDomain;
 }) {
-  const { basePractice, derivedPractice, level, focus, dailyMinutes = 15, performance } = params;
+  const { basePractice, derivedPractice, level, focus, dailyMinutes = 15, performance, domain = "language" } = params;
   const targetCount = dailyMinutes <= 10 ? 3 : dailyMinutes >= 30 ? 6 : 4;
   const chosen: PracticeQuestion[] = [];
   const usedIds = new Set<string>();
-  const weakTypes = getWeakLearningTypes(performance ?? {});
+  const weakTypes = getWeakLearningTypes(performance ?? {}, domain);
 
   function pushQuestion(question?: PracticeQuestion) {
     if (!question || usedIds.has(question.id) || chosen.length >= targetCount) {
@@ -163,10 +165,10 @@ export function selectPracticePlan(params: {
     usedIds.add(question.id);
   }
 
-  const byType = (questions: PracticeQuestion[], learningType: LearningType) =>
-    questions.filter((question) => (question.learningType ?? "sentence-translation") === learningType);
+  const byType = (questions: PracticeQuestion[], learningType: PracticeQuestion["learningType"]) =>
+    questions.filter((question) => normalizeSkillDimension(question.skillDimension ?? question.learningType, domain) === learningType);
 
-  const baseTranslations = byType(basePractice, "sentence-translation");
+  const baseTranslations = byType(basePractice, "translation");
   const derivedVocabulary = byType(derivedPractice, "vocabulary");
   const derivedGrammar = byType(derivedPractice, "grammar");
   const derivedListening = byType(derivedPractice, "listening");
@@ -216,7 +218,7 @@ export function selectPracticePlan(params: {
 
   weakTypes.forEach((learningType) => {
     const weakQuestion = [...derivedPractice, ...basePractice].find(
-      (question) => (question.learningType ?? "sentence-translation") === learningType
+      (question) => normalizeSkillDimension(question.skillDimension ?? question.learningType, domain) === learningType
     );
     pushQuestion(weakQuestion);
   });
@@ -225,5 +227,5 @@ export function selectPracticePlan(params: {
 }
 
 export function getPracticeLearningTypes(questions: PracticeQuestion[]) {
-  return [...new Set(questions.map((question) => question.learningType ?? "sentence-translation"))];
+  return [...new Set(questions.map((question) => question.skillDimension ?? question.learningType ?? "translation").map(legacyLearningTypeForSkill))];
 }

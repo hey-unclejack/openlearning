@@ -21,7 +21,9 @@ export function getLocaleCopy(locale: AppLocale) {
   const isZh = locale === "zh-TW";
   const profileLabels = {
     targetLanguage: {
-      english: isZh ? "英文" : "English"
+      english: isZh ? "英文" : "English",
+      japanese: isZh ? "日文" : "Japanese",
+      korean: isZh ? "韓文" : "Korean"
     },
     nativeLanguage: {
       "zh-TW": isZh ? "中文" : "Chinese"
@@ -45,6 +47,29 @@ export function getLocaleCopy(locale: AppLocale) {
       exam: isZh ? "基礎建立與系統練習" : "Foundation building and structured practice"
     }
   } as const;
+  const skillLabel = (type: string) =>
+    ({
+      translation: isZh ? "翻譯輸出" : "Translation",
+      "sentence-translation": isZh ? "句型翻譯" : "Sentence translation",
+      vocabulary: isZh ? "詞彙" : "Vocabulary",
+      listening: isZh ? "聽力" : "Listening",
+      speaking: isZh ? "口說" : "Speaking",
+      writing: isZh ? "寫作" : "Writing",
+      grammar: isZh ? "語法" : "Grammar",
+      comprehension: isZh ? "閱讀理解" : "Comprehension",
+      "main-idea": isZh ? "主旨判斷" : "Main idea",
+      rewrite: isZh ? "改寫" : "Rewriting",
+      summary: isZh ? "摘要" : "Summary",
+      concept: isZh ? "概念理解" : "Concepts",
+      procedure: isZh ? "解題步驟" : "Procedure",
+      calculation: isZh ? "計算" : "Calculation",
+      "word-problem": isZh ? "應用題" : "Word problems",
+      "error-analysis": isZh ? "錯誤分析" : "Error analysis",
+      recall: isZh ? "主動回想" : "Recall",
+      application: isZh ? "應用" : "Application",
+      explanation: isZh ? "說明" : "Explanation",
+    })[type] ?? type;
+  const skillLabelWithPrefix = (type: string) => isZh ? `學習 type：${skillLabel(type)}` : `Learning type: ${skillLabel(type)}`;
 
   return {
     htmlLang: isZh ? "zh-Hant" : "en",
@@ -58,7 +83,7 @@ export function getLocaleCopy(locale: AppLocale) {
         progress: isZh ? "進度" : "Progress",
         profile: isZh ? "個人檔案" : "Profile"
       },
-      tagline: isZh ? "以記憶優先的語言教練" : "SRS-first language coach",
+      tagline: isZh ? "以記憶優先的學習助手" : "SRS-first learning assistant",
       learningLoop: isZh ? "學習循環" : "Learning Loop",
       signOut: isZh ? "登出" : "Sign out",
       myLearning: isZh ? "我的學習" : "My learning"
@@ -142,7 +167,7 @@ export function getLocaleCopy(locale: AppLocale) {
       login: isZh ? "登入" : "Log in",
       signup: isZh ? "註冊" : "Sign up",
       authEntry: isZh ? "開始使用" : "Get started",
-      eyebrow: isZh ? "語言記憶引擎" : "Language Retention Engine",
+      eyebrow: isZh ? "個人學習記憶引擎" : "Personal Learning Retention Engine",
       title: isZh ? "少學一點，記住更多。" : "Learn less. Remember more.",
       description: isZh
         ? "OpenLearning 結合間隔重複、主動回想與短場景課程，形成每日學習循環，清楚告訴學習者先複習什麼、下一步學什麼，以及哪些地方還不穩。"
@@ -286,25 +311,7 @@ export function getLocaleCopy(locale: AppLocale) {
       focusBoostBody: isZh
         ? "系統會依照最近各學習類型的表現，對較弱的能力多補一些互動。"
         : "The system adds more interaction around the skill types you've struggled with recently.",
-      learningTypeLabel: isZh
-        ? (type: string) =>
-            ({
-              "sentence-translation": "句型翻譯",
-              vocabulary: "單字學習",
-              listening: "聽力",
-              speaking: "口說",
-              writing: "寫作",
-              grammar: "語法"
-            })[type] ?? "句型翻譯"
-        : (type: string) =>
-            ({
-              "sentence-translation": "Sentence translation",
-              vocabulary: "Vocabulary",
-              listening: "Listening",
-              speaking: "Speaking",
-              writing: "Writing",
-              grammar: "Grammar"
-            })[type] ?? "Sentence translation",
+      learningTypeLabel: skillLabel,
       unitProgressLabel: isZh ? "本單元進度" : "Unit progress",
       unitProgress: isZh
         ? (done: number, total: number) => `已完成 ${done} / ${total} 課`
@@ -400,25 +407,7 @@ export function getLocaleCopy(locale: AppLocale) {
         ? (misses: number, rate: number) => `錯誤 ${misses} 次，失誤率 ${rate}%`
         : (misses: number, rate: number) => `${misses} misses, ${rate}% miss rate`,
       backToProgress: isZh ? "返回進度" : "Back to progress",
-      learningTypeLabel: isZh
-        ? (type: string) =>
-            ({
-              "sentence-translation": "句型翻譯",
-              vocabulary: "單字學習",
-              listening: "聽力",
-              speaking: "口說",
-              writing: "寫作",
-              grammar: "語法"
-            })[type] ?? "句型翻譯"
-        : (type: string) =>
-            ({
-              "sentence-translation": "Sentence translation",
-              vocabulary: "Vocabulary",
-              listening: "Listening",
-              speaking: "Speaking",
-              writing: "Writing",
-              grammar: "Grammar"
-            })[type] ?? "Sentence translation",
+      learningTypeLabel: skillLabel,
       interval: isZh ? "間隔" : "interval",
       dayUnit: isZh ? "天" : "day(s)",
       lapses: isZh ? "失誤次數" : "lapses"
@@ -468,25 +457,7 @@ export function getLocaleCopy(locale: AppLocale) {
       todayBoostBody: isZh
         ? "系統會根據你最近各學習類型的表現，對弱項多補一點練習。"
         : "The system adds more practice for the skill types you've struggled with recently.",
-      learningTypeLabel: isZh
-        ? (type: string) =>
-            ({
-              "sentence-translation": "句型翻譯",
-              vocabulary: "單字學習",
-              listening: "聽力",
-              speaking: "口說",
-              writing: "寫作",
-              grammar: "語法"
-            })[type] ?? "句型翻譯"
-        : (type: string) =>
-            ({
-              "sentence-translation": "Sentence translation",
-              vocabulary: "Vocabulary",
-              listening: "Listening",
-              speaking: "Speaking",
-              writing: "Writing",
-              grammar: "Grammar"
-            })[type] ?? "Sentence translation",
+      learningTypeLabel: skillLabel,
       unitProgressLabel: isZh ? "本單元進度" : "Unit progress",
       unitProgress: isZh
         ? (done: number, total: number) => `已完成 ${done} / ${total} 課`
@@ -530,25 +501,7 @@ export function getLocaleCopy(locale: AppLocale) {
       pressureBody: isZh
         ? "系統會把複習與後續課程稍微偏向你最近較不穩的能力。"
         : "The system leans review and upcoming lessons slightly toward the skill types that have been less stable.",
-      learningTypeLabel: isZh
-        ? (type: string) =>
-            ({
-              "sentence-translation": "句型翻譯",
-              vocabulary: "單字學習",
-              listening: "聽力",
-              speaking: "口說",
-              writing: "寫作",
-              grammar: "語法"
-            })[type] ?? "句型翻譯"
-        : (type: string) =>
-            ({
-              "sentence-translation": "Sentence translation",
-              vocabulary: "Vocabulary",
-              listening: "Listening",
-              speaking: "Speaking",
-              writing: "Writing",
-              grammar: "Grammar"
-            })[type] ?? "Sentence translation",
+      learningTypeLabel: skillLabel,
       back: isZh ? "返回今日學習" : "Back to today",
       queueLabel: isZh ? "今日到期" : "Due today",
       queueCount: isZh ? (count: number) => `目前還有 ${count} 張卡片` : (count: number) => `${count} cards in the queue`,
@@ -623,21 +576,33 @@ export function getLocaleCopy(locale: AppLocale) {
       eyebrow: isZh ? "學習目標" : "Learning Goal",
       title: isZh ? "先把學習目標定清楚。" : "Set your learning goal first.",
       body: isZh
-        ? "先一步一步設定目標語言、目前程度、學習重點和每日節奏，系統才知道該怎麼安排接下來的學習。"
-        : "Set your target language, current level, focus, and daily rhythm step by step so the system can build the right learning flow.",
+        ? "先設定你想學的領域、目前程度、學習重點和每日節奏，系統才知道該怎麼安排接下來的學習。"
+        : "Set what you want to learn, current level, focus, and daily rhythm so the system can build the right learning flow.",
       profile: isZh ? "學習目標設定" : "Learning goal setup",
       currentDefaults: isZh ? "目前學習目標" : "Current learning goal",
       step: isZh ? "步驟" : "Step",
       targetLanguage: isZh ? "目標語言" : "Target language",
+      learningDomain: isZh ? "學習目標類型" : "Learning goal type",
+      subject: isZh ? "主題或科目" : "Topic or subject",
+      domainLanguage: isZh ? "學一門語言" : "Learn a language",
+      domainLanguageDescription: isZh ? "英文、日文、韓文等語言學習。" : "English, Japanese, Korean, and other language goals.",
+      domainMandarin: isZh ? "加強國文 / 閱讀寫作" : "Mandarin reading and writing",
+      domainMandarinDescription: isZh ? "閱讀理解、主旨、改寫、摘要和字詞理解。" : "Comprehension, main idea, rewriting, summaries, and vocabulary.",
+      domainMath: isZh ? "學數學或解題" : "Math and problem solving",
+      domainMathDescription: isZh ? "概念、步驟、計算、應用題和錯誤分析。" : "Concepts, procedures, calculation, word problems, and error analysis.",
+      domainGeneral: isZh ? "匯入自己的內容學習" : "Learn from my own content",
+      domainGeneralDescription: isZh ? "文章、教材、工作知識、考試內容或任何自備材料。" : "Articles, study text, work knowledge, exam material, or your own sources.",
       level: isZh ? "目前程度" : "Current level",
       focus: isZh ? "學習目標" : "Learning focus",
       dailyMinutes: isZh ? "每日學習分鐘數" : "Daily minutes",
       minutesValue: isZh ? (minutes: number) => `${minutes} 分鐘` : (minutes: number) => `${minutes} minutes`,
       nativeLanguage: isZh ? "母語" : "Native language",
-      stepIdentityTitle: isZh ? "先設定你的語言背景" : "Set your language setup first",
+      stepDomainTitle: isZh ? "先選你想學什麼" : "Choose what you want to learn",
+      stepDomainBody: isZh ? "語言仍是預設入口，也可以改成國文、數學或自己的內容。" : "Language remains the default, and you can also choose Mandarin literacy, math, or your own content.",
+      stepIdentityTitle: isZh ? "設定學習背景" : "Set your learning setup",
       stepIdentityBody: isZh
-        ? "先告訴系統你的母語和想學的語言，後續的內容與介面才會用對的方式呈現。"
-        : "Start with your native language and learning language so the system can present the right content and interface.",
+        ? "語言目標會使用母語與目標語言；其他目標會先記錄科目或內容主題。"
+        : "Language goals use a native and target language; other goals start with the subject or content topic.",
       stepLevelTitle: isZh ? "再確認你目前的程度" : "Set your current level",
       stepLevelBody: isZh ? "不用太精準，選最接近現在狀態的程度即可。" : "It does not need to be exact. Pick the level closest to where you are now.",
       levelOptionA1Title: isZh ? "初學起步" : "Just getting started",
@@ -763,25 +728,7 @@ export function getLocaleCopy(locale: AppLocale) {
       spokenResultLabel: isZh ? "語音辨識結果" : "Speech transcript",
       spokenResultEmpty: isZh ? "開始錄音後，這裡會出現辨識到的英文句子。" : "Your transcript will appear here after you start speaking.",
       speechUnsupported: isZh ? "目前瀏覽器不支援語音輸入，這題會比較適合改用打字互動。" : "Speech input is not available in this browser, so typing is a better fallback here.",
-      learningTypeLabel: isZh
-        ? (type: string) =>
-            ({
-              "sentence-translation": "學習 type：句型翻譯",
-              vocabulary: "學習 type：單字學習",
-              listening: "學習 type：聽力",
-              speaking: "學習 type：口說",
-              writing: "學習 type：寫作",
-              grammar: "學習 type：語法"
-            })[type] ?? "學習 type：句型翻譯"
-        : (type: string) =>
-            ({
-              "sentence-translation": "Learning type: Sentence translation",
-              vocabulary: "Learning type: Vocabulary",
-              listening: "Learning type: Listening",
-              speaking: "Learning type: Speaking",
-              writing: "Learning type: Writing",
-              grammar: "Learning type: Grammar"
-            })[type] ?? "Learning type: Sentence translation",
+      learningTypeLabel: skillLabelWithPrefix,
       checkAnswer: isZh ? "檢查答案" : "Check answer",
       nextStep: isZh ? "下一步" : "Next step",
       progressLabel: isZh ? (done: number, total: number) => `課程進度 ${done} / ${total}` : (done: number, total: number) => `Lesson progress ${done} / ${total}`,

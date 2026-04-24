@@ -3,6 +3,7 @@ import { AppShell } from "@/components/layout/app-shell";
 import { ReviewPlanningCard } from "@/components/study/review-planning-card";
 import { getLocaleCopy } from "@/lib/i18n";
 import { getLocale } from "@/lib/i18n-server";
+import { getActiveLearningGoal, getNextGeneratedPlanDay, hasFixedCourseTrack } from "@/lib/learning-goals";
 import {
   buildDerivedPracticeQuestions,
   getPracticeLearningTypes,
@@ -28,14 +29,21 @@ export default async function TodayPage({
   const learningPerformance = await getLearningPerformanceFromHeaders();
   const reviewPlan = await getTodayReviewPlan(sessionId);
   const { lesson, planDay, unit, courseLesson } = await getTodayLesson(sessionId);
+  const state = await readState(sessionId);
   const locale = await getLocale();
   const copy = getLocaleCopy(locale);
+  const isZh = locale === "zh-TW";
+  const activeGoal = state.profile ? getActiveLearningGoal(state.profile) : undefined;
+  const usesFixedCourseTrack = hasFixedCourseTrack(activeGoal);
+  const generatedPlanDay = getNextGeneratedPlanDay(state.generatedPlans, activeGoal);
+  const generatedHref = generatedPlanDay ? `/study/generated/${generatedPlanDay.plan.id}/${generatedPlanDay.day.lessonId}` : "/ai";
   const { completedLesson, completedLessonId, completedUnit, unitCompleted, nextLessonId } = await searchParams;
   const unitLessons = unit?.lessons ?? [];
   const currentIndex = courseLesson ? unitLessons.findIndex((item) => item.id === courseLesson.id) : -1;
   const nextLesson = currentIndex >= 0 ? unitLessons[currentIndex + 1] : undefined;
   const completedInUnit = currentIndex >= 0 ? currentIndex : 0;
-  const weakTypes = getWeakLearningTypes(learningPerformance).slice(0, 2);
+  const activeDomain = usesFixedCourseTrack ? courseLesson?.domain ?? "language" : activeGoal?.domain ?? "general";
+  const weakTypes = getWeakLearningTypes(learningPerformance, activeDomain).slice(0, 2);
   const completedState = completedLessonId ? await readState(sessionId) : null;
   const completedCourseLesson = completedLessonId
     ? completedState?.courseTrack.units.flatMap((courseUnit) => courseUnit.lessons).find((item) => item.id === completedLessonId)
@@ -54,7 +62,8 @@ export default async function TodayPage({
           level: completedState.profile.level,
           focus: completedState.profile.focus,
           dailyMinutes: completedState.profile.dailyMinutes,
-          performance: learningPerformance
+          performance: learningPerformance,
+          domain: getActiveLearningGoal(completedState.profile).domain
         })
       : [];
   const completedPracticeTypes = getPracticeLearningTypes(completedPracticePlan);
@@ -146,12 +155,33 @@ export default async function TodayPage({
               <span className="pill lesson-meta-pill-secondary">{copy.todayPage.lessonPill}</span>
             </div>
             <div className="today-lesson-meta">
-              <span className="pill">{copy.todayPage.dayLabel(planDay.dayNumber)}</span>
-              <p className="subtle">{copy.todayPage.unitLabel(planDay.unitNumber, planDay.unitTitle)}</p>
+              <span className="pill">
+                {usesFixedCourseTrack
+                  ? copy.todayPage.dayLabel(planDay.dayNumber)
+                  : generatedPlanDay
+                    ? `AI Day ${generatedPlanDay.day.dayNumber}`
+                    : isZh ? "尚未建立計劃" : "No plan yet"}
+              </span>
+              <p className="subtle">
+                {usesFixedCourseTrack
+                  ? copy.todayPage.unitLabel(planDay.unitNumber, planDay.unitTitle)
+                  : activeGoal?.title ?? (isZh ? "AI / 內容生成計劃" : "AI / generated plan")}
+              </p>
             </div>
-            <h2 className="section-title">{lesson.id ? planDay.title : copy.todayPage.noLesson}</h2>
-            <p className="subtle">{planDay.objective}</p>
-            {unit ? (
+            <h2 className="section-title">
+              {usesFixedCourseTrack
+                ? lesson.id ? planDay.title : copy.todayPage.noLesson
+                : generatedPlanDay?.day.title ?? (isZh ? "先建立一份內容學習計劃" : "Create a generated learning plan first")}
+            </h2>
+            <p className="subtle">
+              {usesFixedCourseTrack
+                ? planDay.objective
+                : generatedPlanDay?.day.objective ??
+                  (isZh
+                    ? "這個學習目標沒有固定課程地圖。請到 AI 導入貼上教材、文章、題目或主題，系統會轉成短課與 SRS。"
+                    : "This learning goal does not use a fixed course map. Open AI intake with a source, topic, problem set, or content and turn it into short lessons and SRS.")}
+            </p>
+            {usesFixedCourseTrack && unit ? (
               <div className="muted-box today-lesson-fit">
                 <div className="eyebrow">{copy.todayPage.fitLabel}</div>
                 <p className="subtle">{unit.summary}</p>
@@ -170,14 +200,32 @@ export default async function TodayPage({
                   </p>
                 ) : null}
               </div>
+            ) : generatedPlanDay ? (
+              <div className="muted-box today-lesson-fit">
+                <div className="eyebrow">{isZh ? "生成計劃進度" : "Generated plan progress"}</div>
+                <p className="subtle">
+                  {generatedPlanDay.day.dayNumber} / {generatedPlanDay.plan.days.length}
+                </p>
+                <ReviewPlanningCard
+                  body={copy.todayPage.todayBoostBody}
+                  className="muted-box today-lesson-fit"
+                  locale={locale}
+                  title={copy.todayPage.todayBoostLabel}
+                  weakTypes={weakTypes}
+                />
+              </div>
             ) : null}
             <div className="muted-box today-lesson-note">
               <div className="eyebrow">{copy.todayPage.beforeBegin}</div>
-              <p className="subtle">{lesson.intro}</p>
+              <p className="subtle">
+                {usesFixedCourseTrack
+                  ? lesson.intro
+                  : generatedPlanDay?.day.asset.intro ?? (isZh ? "先建立計劃，再回到這裡開始今日任務。" : "Create a plan first, then return here to start today's task.")}
+              </p>
             </div>
             <div className="button-row">
-              <Link className="button-secondary" href={`/study/lesson/${planDay.lessonId}`}>
-                {copy.todayPage.openLesson}
+              <Link className="button-secondary" href={usesFixedCourseTrack ? `/study/lesson/${planDay.lessonId}` : generatedHref}>
+                {usesFixedCourseTrack || generatedPlanDay ? copy.todayPage.openLesson : (isZh ? "前往 AI 導入" : "Open AI intake")}
               </Link>
             </div>
           </div>
@@ -192,9 +240,13 @@ export default async function TodayPage({
             <div className="muted-box today-lesson-fit">
               <div className="eyebrow">{copy.todayPage.afterFinishLabel}</div>
               <p className="subtle">{copy.todayPage.afterFinishBody}</p>
-              {nextLesson ? (
+              {usesFixedCourseTrack && nextLesson ? (
                 <p className="subtle">
                   {copy.todayPage.nextLessonLabel} {nextLesson.title}
+                </p>
+              ) : generatedPlanDay ? (
+                <p className="subtle">
+                  {isZh ? "下一步：" : "Next: "} {generatedPlanDay.day.title}
                 </p>
               ) : (
                 <p className="subtle">{copy.todayPage.nextLessonFallback}</p>

@@ -5,6 +5,7 @@ import { APP_PERFORMANCE_COOKIE, readLearningPerformance } from "@/lib/practice-
 export const APP_SESSION_COOKIE = "openlearning_session_id";
 export const APP_SESSION_HEADER = "x-openlearning-session-id";
 export const APP_AVATAR_COOKIE = "openlearning_avatar_url";
+export const APP_ADULT_UNLOCK_COOKIE = "openlearning_adult_unlocked";
 
 export function resolveAvatarCookie(value?: string | null) {
   if (!value) {

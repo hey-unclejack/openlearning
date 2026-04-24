@@ -6,7 +6,7 @@ import { ReactNode } from "react";
 import { AppLocale, getLocaleCopy } from "@/lib/i18n";
 import { SiteTopbar } from "@/components/layout/site-topbar";
 import { APP_AVATAR_COOKIE, getCurrentUser, getSessionIdFromHeaders, resolveAvatarCookie } from "@/lib/session";
-import { readState } from "@/lib/store";
+import { deriveRetentionScore, deriveStats, readState } from "@/lib/store";
 
 function buildWeeklyActivity(reviewedAtValues: string[], locale: AppLocale) {
   const today = new Date();
@@ -65,17 +65,23 @@ export async function AppShell({
     state.reviewLogs.map((log) => log.reviewedAt),
     locale,
   );
-  const links: Array<{ href: Route; label: string }> = [
+  const stats = deriveStats(state);
+  const retentionScore = deriveRetentionScore(state);
+  const allLinks: Array<{ href: Route; label: string }> = [
     { href: "/dashboard", label: copy.appShell.nav.dashboard },
     { href: "/ai", label: copy.appShell.nav.ai },
+    { href: "/classes", label: locale === "zh-TW" ? "班級" : "Classes" },
     { href: "/study/today", label: copy.appShell.nav.today },
     { href: "/study/review", label: copy.appShell.nav.review },
     { href: "/progress", label: copy.appShell.nav.progress },
     { href: "/profile", label: copy.appShell.nav.profile }
   ];
+  const childModeAllowedPaths = new Set<Route>(["/dashboard", "/study/today", "/study/review", "/progress"]);
+  const links = state.accountMode === "child" ? allLinks.filter((link) => childModeAllowedPaths.has(link.href)) : allLinks;
   const quickLinks: Array<{ href: Route; label: string }> = isProfileSection
     ? [
         { href: "/profile", label: copy.profilePage.navOverview },
+        { href: "/profile/learners", label: locale === "zh-TW" ? "學習者" : "Learners" },
         { href: "/profile/goals", label: copy.profilePage.navGoals },
         { href: "/profile/ai-settings", label: copy.profilePage.navAiSettings },
         { href: "/profile/settings", label: copy.profilePage.navSettings }
@@ -91,11 +97,22 @@ export async function AppShell({
     redirect(`/profile/goals?next=${encodeURIComponent(activePath)}`);
   }
 
+  const learningOnlyAllowed = activePath === "/dashboard" || activePath === "/study/today" || activePath === "/study/review" || activePath === "/progress";
+  if (state.accountMode === "child" && !learningOnlyAllowed) {
+    redirect("/study/today");
+  }
+
   return (
     <div className="app-shell shell">
       <SiteTopbar
         currentPath={activePath}
+        accountMode={state.accountMode}
+        activeLearnerId={state.activeLearnerId}
+        dueCount={stats.dueCount}
+        hasSupervisorPin={Boolean(state.supervisorPinHash)}
+        learners={state.learners ?? []}
         locale={locale}
+        retentionScore={retentionScore}
         streak={state.streak}
         weeklyActivity={weeklyActivity}
         userAvatarUrl={avatarUrl}

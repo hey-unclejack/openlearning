@@ -38,5 +38,5 @@ test("reviews submit route updates performance cookie from review result", async
   const setCookie = response.headers.get("set-cookie");
   assert.ok(setCookie);
   assert.match(setCookie, new RegExp(`${APP_PERFORMANCE_COOKIE}=`));
-  assert.match(setCookie, /sentence-translation|vocabulary|grammar/);
+  assert.match(setCookie, /translation|vocabulary|grammar/);
 });

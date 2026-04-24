@@ -1,6 +1,10 @@
 import Link from "next/link";
+import { AdultUnlockControl } from "@/components/layout/adult-unlock-control";
 import { LanguageSwitcher } from "@/components/layout/language-switcher";
+import { ProfileLearnerMenu } from "@/components/layout/profile-learner-menu";
+import { TopbarLearningSwitcher } from "@/components/layout/topbar-learning-switcher";
 import { AppLocale, getLocaleCopy } from "@/lib/i18n";
+import { AccountMode, LearnerSpace } from "@/lib/types";
 
 function StreakIcon() {
   return (
@@ -28,6 +32,12 @@ export function SiteTopbar({
   streak,
   weeklyActivity,
   currentPath,
+  learners = [],
+  activeLearnerId,
+  accountMode = "supervisor",
+  hasSupervisorPin = false,
+  dueCount = 0,
+  retentionScore = 0,
   authModal = false
 }: {
   locale: AppLocale;
@@ -42,12 +52,18 @@ export function SiteTopbar({
     isToday: boolean;
   }>;
   currentPath: string;
+  learners?: LearnerSpace[];
+  activeLearnerId?: string;
+  accountMode?: AccountMode;
+  hasSupervisorPin?: boolean;
+  dueCount?: number;
+  retentionScore?: number;
   authModal?: boolean;
 }) {
   const copy = getLocaleCopy(locale);
   const authHref = authModal ? "/?auth=signup" : "/signup";
   const avatarFallback = userEmail?.trim().charAt(0).toUpperCase() || "O";
-  const resolvedAvatarUrl = userAvatarUrl || "/default-profile-avatar.svg";
+  const resolvedAvatarUrl = userAvatarUrl || undefined;
 
   return (
     <header className="site-header">
@@ -59,8 +75,19 @@ export function SiteTopbar({
         <div className="topbar-actions">
           {userEmail ? (
             <>
+              {accountMode === "child" ? (
+                <AdultUnlockControl hasSupervisorPin={hasSupervisorPin} locale={locale} />
+              ) : (
+                <TopbarLearningSwitcher
+                  activeLearnerId={activeLearnerId}
+                  dueCount={dueCount}
+                  learners={learners}
+                  locale={locale}
+                  retentionScore={retentionScore}
+                />
+              )}
               <div className="streak-hover">
-                <div className="streak-pill" aria-label={`${copy.dashboard.currentStreak} ${streak ?? 0}`}>
+                <div className="topbar-control streak-pill" aria-label={`${copy.dashboard.currentStreak} ${streak ?? 0}`}>
                   <StreakIcon />
                   <span>{streak ?? 0}</span>
                 </div>
@@ -81,13 +108,14 @@ export function SiteTopbar({
                   </div>
                 </div>
               </div>
-              <Link className="profile-link" href="/profile">
-                {resolvedAvatarUrl ? (
-                  <img alt={userEmail} className="profile-avatar" src={resolvedAvatarUrl} />
-                ) : (
-                  <span className="profile-avatar profile-avatar-fallback">{avatarFallback}</span>
-                )}
-              </Link>
+              <ProfileLearnerMenu
+                activeLearnerId={activeLearnerId}
+                avatarFallback={avatarFallback}
+                learners={learners}
+                locale={locale}
+                userAvatarUrl={resolvedAvatarUrl}
+                userEmail={userEmail}
+              />
             </>
           ) : (
             <>

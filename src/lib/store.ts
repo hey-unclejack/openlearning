@@ -1,14 +1,36 @@
 import { buildCourseState, buildCourseTrack, buildReviewItemsForLesson } from "@/lib/data/curriculum";
 import { normalizeAiSettings } from "@/lib/ai/settings";
 import { createInitialState } from "@/lib/data/seed";
+import {
+  legacyLearningTypeForSkill,
+  normalizeLearnerProfile,
+  normalizeLearningDomain,
+  normalizeSkillDimension,
+} from "@/lib/learning-goals";
+import {
+  DEFAULT_LEARNER_ID,
+  assignGoalToLearner,
+  getActiveLearner,
+  makeAssignedGoalFromTemplate,
+  makeChildLearner,
+  makeClassGoalTemplate,
+  makeId,
+  normalizeLearnerSpaces,
+} from "@/lib/learner-spaces";
 import { recordLearningPerformance } from "@/lib/practice-performance";
 import { updateReviewItem } from "@/lib/srs";
 import { getSupabaseAdminClient } from "@/lib/supabase";
+import { hashSupervisorPin, verifySupervisorPinHash } from "@/lib/supervisor-pin";
 import {
   AppState,
+  AccountMode,
   AIProviderConnection,
   AISettings,
   AIUsageLog,
+  ClassEnrollment,
+  ClassGoalTemplate,
+  ClassInvite,
+  Classroom,
   CourseLesson,
   GeneratedLearningPlan,
   GeneratedPlanDay,
@@ -16,6 +38,10 @@ import {
   LearnerProfile,
   LearningFocus,
   LearningType,
+  LearningGoal,
+  LearningDomain,
+  LearnerSpace,
+  SkillDimension,
   NativeLanguage,
   ProficiencyLevel,
   ReviewGrade,
@@ -35,11 +61,17 @@ type ProfileRow = {
   onboarded: boolean;
   streak: number;
   current_day: number;
+  account_mode?: AppState["accountMode"] | null;
+  supervisor_pin_hash?: string | null;
+  active_learner_id?: string | null;
+  learners?: LearnerSpace[] | null;
   target_language: string;
   native_language: string;
   level: LearnerProfile["level"];
   daily_minutes: number;
   focus: string;
+  active_goal_id?: string | null;
+  goals?: LearningGoal[] | null;
 };
 
 type ReviewItemRow = {
@@ -50,6 +82,10 @@ type ReviewItemRow = {
   tags: string[];
   lesson_id?: string | null;
   unit_id?: string | null;
+  learner_id?: string | null;
+  goal_id?: string | null;
+  domain?: LearningDomain | null;
+  skill_dimension?: SkillDimension | null;
   learning_type?: LearningType | null;
   importance?: "core" | "extension" | null;
   ease_factor: number;
@@ -73,6 +109,10 @@ type ReviewLogRow = {
   response_ms?: number | null;
   lesson_id?: string | null;
   unit_id?: string | null;
+  learner_id?: string | null;
+  goal_id?: string | null;
+  domain?: LearningDomain | null;
+  skill_dimension?: SkillDimension | null;
   learning_type?: LearningType | null;
   outcome?: "correct" | "incorrect" | null;
 };
@@ -80,6 +120,9 @@ type ReviewLogRow = {
 type LearningSourceRow = {
   source_id: string;
   source_type: LearningSource["type"];
+  learner_id?: string | null;
+  goal_id?: string | null;
+  domain?: LearningSource["domain"] | null;
   subject: LearningSource["subject"];
   title: string;
   raw_text: string;
@@ -93,6 +136,9 @@ type LearningSourceRow = {
 type GeneratedPlanRow = {
   generated_plan_id: string;
   source_id: string;
+  learner_id?: string | null;
+  goal_id?: string | null;
+  domain?: GeneratedLearningPlan["domain"] | null;
   subject: GeneratedLearningPlan["subject"];
   provider_mode: GeneratedLearningPlan["providerMode"];
   model: string;
@@ -139,6 +185,54 @@ type AIUsageLogRow = {
   created_at: string;
 };
 
+type ClassroomRow = {
+  classroom_id: string;
+  teacher_account_id: string;
+  title: string;
+  school_name?: string | null;
+  grade_band?: string | null;
+  archived_at?: string | null;
+  created_at: string;
+};
+
+type ClassGoalTemplateRow = {
+  template_id: string;
+  classroom_id: string;
+  source_goal_id: string;
+  title: string;
+  domain: LearningDomain;
+  subject?: string | null;
+  level: LearningGoal["level"];
+  purpose: LearningGoal["purpose"];
+  daily_minutes: number;
+  template_version: number;
+  sync_policy: ClassGoalTemplate["syncPolicy"];
+  metadata?: Record<string, string | number | boolean> | null;
+  created_at: string;
+  updated_at?: string | null;
+};
+
+type ClassInviteRow = {
+  invite_id: string;
+  classroom_id: string;
+  template_id: string;
+  code: string;
+  status: ClassInvite["status"];
+  expires_at?: string | null;
+  created_at: string;
+};
+
+type ClassEnrollmentRow = {
+  enrollment_id: string;
+  classroom_id: string;
+  template_id: string;
+  parent_account_id: string;
+  child_learner_id: string;
+  assigned_goal_id: string;
+  status: ClassEnrollment["status"];
+  joined_at: string;
+};
+
 type ReviewSubmissionOptions = {
   sessionType?: ReviewSessionType;
   confidence?: number;
@@ -170,23 +264,132 @@ function getLocalState(sessionId: string) {
   return stateMap.get(sessionId)!;
 }
 
+function findLocalClassInviteByCode(code: string) {
+  for (const [sessionId, state] of getLocalStateMap()) {
+    const invite = state.classInvites.find((item) => item.code === code);
+    if (invite) {
+      return { sessionId, state, invite };
+    }
+  }
+
+  return null;
+}
+
+function cloneGeneratedPlansForAssignedGoal(params: {
+  plans: GeneratedLearningPlan[];
+  sourceGoalId: string;
+  assignedGoalId: string;
+  childLearnerId: string;
+}) {
+  const createdAt = new Date().toISOString();
+
+  return params.plans
+    .filter((plan) => plan.goalId === params.sourceGoalId)
+    .map((plan) => ({
+      ...plan,
+      id: `${plan.id}-copy-${params.childLearnerId}`,
+      sourceId: `${plan.sourceId}-copy-${params.childLearnerId}`,
+      learnerId: params.childLearnerId,
+      goalId: params.assignedGoalId,
+      status: "active" as const,
+      createdAt,
+      days: plan.days.map((day) => ({
+        ...day,
+        id: `${day.id}-copy-${params.childLearnerId}`,
+        lessonId: `${day.lessonId}-copy-${params.childLearnerId}`,
+        completedAt: undefined,
+        asset: {
+          ...day.asset,
+          id: `${day.asset.id}-copy-${params.childLearnerId}`,
+          unitId: `${day.asset.unitId}-copy-${params.childLearnerId}`,
+          reviewSeeds: day.asset.reviewSeeds.map((seed) => ({
+            ...seed,
+            id: `${seed.id}-copy-${params.childLearnerId}`,
+            tags: [...new Set([...seed.tags, "class-assigned"])],
+          })),
+          practice: day.asset.practice.map((question) => ({
+            ...question,
+            id: `${question.id}-copy-${params.childLearnerId}`,
+          })),
+        },
+      })),
+    }));
+}
+
+function mergeAssignedGeneratedPlans(existingPlans: GeneratedLearningPlan[], copiedPlans: GeneratedLearningPlan[]) {
+  const copiedById = new Map(copiedPlans.map((plan) => [plan.id, plan]));
+  const mergedExisting = existingPlans.map((plan) => {
+    const replacement = copiedById.get(plan.id);
+
+    if (!replacement) {
+      return plan;
+    }
+
+    copiedById.delete(plan.id);
+    const hasStarted = plan.days.some((day) => Boolean(day.completedAt));
+    return hasStarted ? plan : replacement;
+  });
+
+  return [...copiedById.values(), ...mergedExisting];
+}
+
+function updateLearnerAssignedGoal(learner: LearnerSpace, enrollment: ClassEnrollment, template: ClassGoalTemplate) {
+  const goals = learner.profile.goals ?? [];
+  const updatedGoals = goals.map((goal) =>
+    goal.id === enrollment.assignedGoalId
+      ? {
+          ...goal,
+          title: template.title,
+          domain: template.domain,
+          subject: template.subject,
+          level: template.level,
+          purpose: template.purpose,
+          dailyMinutes: template.dailyMinutes,
+          metadata: template.metadata,
+          templateVersion: template.templateVersion,
+          updatedAt: template.updatedAt ?? new Date().toISOString(),
+          managedByTeacher: true,
+        }
+      : goal,
+  );
+
+  return {
+    ...learner,
+    profile: normalizeLearnerProfile({
+      ...learner.profile,
+      goals: updatedGoals,
+      activeGoalId: learner.profile.activeGoalId ?? enrollment.assignedGoalId,
+    }),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
 function profileToRow(sessionId: string, state: AppState): ProfileRow {
-  const profile = state.profile ?? createInitialState().profile!;
+  const profile = normalizeLearnerProfile(state.profile ?? createInitialState().profile!);
 
   return {
     session_id: sessionId,
     onboarded: state.onboarded,
     streak: state.streak,
     current_day: state.currentDay,
+    account_mode: state.accountMode ?? "supervisor",
+    supervisor_pin_hash: state.supervisorPinHash ?? null,
+    active_learner_id: state.activeLearnerId ?? DEFAULT_LEARNER_ID,
+    learners: state.learners ?? [],
     target_language: profile.targetLanguage,
     native_language: profile.nativeLanguage,
     level: profile.level,
     daily_minutes: profile.dailyMinutes,
     focus: profile.focus,
+    active_goal_id: profile.activeGoalId,
+    goals: profile.goals,
   };
 }
 
 function reviewItemFromRow(row: ReviewItemRow): ReviewItem {
+  const domain = row.domain ?? normalizeLearningDomain(row.learning_type);
+  const skillDimension = normalizeSkillDimension(row.skill_dimension ?? row.learning_type, domain);
+
   return {
     id: row.review_item_id,
     front: row.front,
@@ -195,7 +398,11 @@ function reviewItemFromRow(row: ReviewItemRow): ReviewItem {
     tags: row.tags,
     lessonId: row.lesson_id ?? "legacy-lesson",
     unitId: row.unit_id ?? "legacy-unit",
-    learningType: row.learning_type ?? "sentence-translation",
+    goalId: row.goal_id ?? undefined,
+    learnerId: row.learner_id ?? DEFAULT_LEARNER_ID,
+    domain,
+    skillDimension,
+    learningType: row.learning_type ?? legacyLearningTypeForSkill(skillDimension),
     importance: row.importance ?? "core",
     easeFactor: row.ease_factor,
     intervalDays: row.interval_days,
@@ -219,6 +426,10 @@ function reviewItemToRow(sessionId: string, item: ReviewItem) {
     tags: item.tags,
     lesson_id: item.lessonId,
     unit_id: item.unitId,
+    learner_id: item.learnerId ?? DEFAULT_LEARNER_ID,
+    goal_id: item.goalId ?? null,
+    domain: item.domain ?? null,
+    skill_dimension: item.skillDimension,
     learning_type: item.learningType,
     importance: item.importance,
     ease_factor: item.easeFactor,
@@ -234,6 +445,9 @@ function reviewItemToRow(sessionId: string, item: ReviewItem) {
 }
 
 function reviewLogFromRow(row: ReviewLogRow): ReviewLog {
+  const domain = row.domain ?? normalizeLearningDomain(row.learning_type);
+  const skillDimension = row.skill_dimension ?? (row.learning_type ? normalizeSkillDimension(row.learning_type, domain) : undefined);
+
   return {
     itemId: row.review_item_id,
     grade: row.grade,
@@ -244,15 +458,24 @@ function reviewLogFromRow(row: ReviewLogRow): ReviewLog {
     responseMs: row.response_ms ?? undefined,
     lessonId: row.lesson_id ?? undefined,
     unitId: row.unit_id ?? undefined,
+    goalId: row.goal_id ?? undefined,
+    learnerId: row.learner_id ?? DEFAULT_LEARNER_ID,
+    domain,
+    skillDimension,
     learningType: row.learning_type ?? undefined,
     outcome: row.outcome ?? undefined,
   };
 }
 
 function learningSourceFromRow(row: LearningSourceRow): LearningSource {
+  const domain = row.domain ?? normalizeLearningDomain(row.subject);
+
   return {
     id: row.source_id,
     type: row.source_type,
+    learnerId: row.learner_id ?? DEFAULT_LEARNER_ID,
+    goalId: row.goal_id ?? undefined,
+    domain,
     subject: row.subject,
     title: row.title,
     rawText: row.raw_text,
@@ -265,9 +488,14 @@ function learningSourceFromRow(row: LearningSourceRow): LearningSource {
 }
 
 function generatedPlanFromRow(row: GeneratedPlanRow): GeneratedLearningPlan {
+  const domain = row.domain ?? normalizeLearningDomain(row.subject);
+
   return {
     id: row.generated_plan_id,
     sourceId: row.source_id,
+    learnerId: row.learner_id ?? DEFAULT_LEARNER_ID,
+    goalId: row.goal_id ?? undefined,
+    domain,
     subject: row.subject,
     providerMode: row.provider_mode,
     model: row.model,
@@ -331,6 +559,9 @@ function learningSourceToRow(sessionId: string, source: LearningSource) {
     session_id: sessionId,
     source_id: source.id,
     source_type: source.type,
+    learner_id: source.learnerId ?? DEFAULT_LEARNER_ID,
+    goal_id: source.goalId ?? null,
+    domain: source.domain,
     subject: source.subject,
     title: source.title,
     raw_text: source.rawText,
@@ -347,6 +578,9 @@ function generatedPlanToRow(sessionId: string, plan: GeneratedLearningPlan) {
     session_id: sessionId,
     generated_plan_id: plan.id,
     source_id: plan.sourceId,
+    learner_id: plan.learnerId ?? DEFAULT_LEARNER_ID,
+    goal_id: plan.goalId ?? null,
+    domain: plan.domain,
     subject: plan.subject,
     provider_mode: plan.providerMode,
     model: plan.model,
@@ -403,6 +637,122 @@ function aiUsageLogToRow(sessionId: string, usageLog: AIUsageLog) {
   };
 }
 
+function classroomFromRow(row: ClassroomRow): Classroom {
+  return {
+    id: row.classroom_id,
+    teacherAccountId: row.teacher_account_id,
+    title: row.title,
+    schoolName: row.school_name ?? undefined,
+    gradeBand: row.grade_band ?? undefined,
+    archivedAt: row.archived_at ?? undefined,
+    createdAt: row.created_at,
+  };
+}
+
+function classroomToRow(sessionId: string, classroom: Classroom) {
+  return {
+    session_id: sessionId,
+    classroom_id: classroom.id,
+    teacher_account_id: classroom.teacherAccountId,
+    title: classroom.title,
+    school_name: classroom.schoolName ?? null,
+    grade_band: classroom.gradeBand ?? null,
+    archived_at: classroom.archivedAt ?? null,
+    created_at: classroom.createdAt,
+  };
+}
+
+function classGoalTemplateFromRow(row: ClassGoalTemplateRow): ClassGoalTemplate {
+  return {
+    id: row.template_id,
+    classroomId: row.classroom_id,
+    sourceGoalId: row.source_goal_id,
+    title: row.title,
+    domain: row.domain,
+    subject: row.subject ?? undefined,
+    level: row.level,
+    purpose: row.purpose,
+    dailyMinutes: row.daily_minutes,
+    templateVersion: row.template_version,
+    syncPolicy: row.sync_policy,
+    metadata: row.metadata ?? undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at ?? undefined,
+  };
+}
+
+function classGoalTemplateToRow(sessionId: string, template: ClassGoalTemplate) {
+  return {
+    session_id: sessionId,
+    template_id: template.id,
+    classroom_id: template.classroomId,
+    source_goal_id: template.sourceGoalId,
+    title: template.title,
+    domain: template.domain,
+    subject: template.subject ?? null,
+    level: template.level,
+    purpose: template.purpose,
+    daily_minutes: template.dailyMinutes,
+    template_version: template.templateVersion,
+    sync_policy: template.syncPolicy,
+    metadata: template.metadata ?? {},
+    created_at: template.createdAt,
+    updated_at: template.updatedAt ?? template.createdAt,
+  };
+}
+
+function classInviteFromRow(row: ClassInviteRow): ClassInvite {
+  return {
+    id: row.invite_id,
+    classroomId: row.classroom_id,
+    templateId: row.template_id,
+    code: row.code,
+    status: row.status,
+    expiresAt: row.expires_at ?? undefined,
+    createdAt: row.created_at,
+  };
+}
+
+function classInviteToRow(sessionId: string, invite: ClassInvite) {
+  return {
+    session_id: sessionId,
+    invite_id: invite.id,
+    classroom_id: invite.classroomId,
+    template_id: invite.templateId,
+    code: invite.code,
+    status: invite.status,
+    expires_at: invite.expiresAt ?? null,
+    created_at: invite.createdAt,
+  };
+}
+
+function classEnrollmentFromRow(row: ClassEnrollmentRow): ClassEnrollment {
+  return {
+    id: row.enrollment_id,
+    classroomId: row.classroom_id,
+    templateId: row.template_id,
+    parentAccountId: row.parent_account_id,
+    childLearnerId: row.child_learner_id,
+    assignedGoalId: row.assigned_goal_id,
+    status: row.status,
+    joinedAt: row.joined_at,
+  };
+}
+
+function classEnrollmentToRow(sessionId: string, enrollment: ClassEnrollment) {
+  return {
+    session_id: sessionId,
+    enrollment_id: enrollment.id,
+    classroom_id: enrollment.classroomId,
+    template_id: enrollment.templateId,
+    parent_account_id: enrollment.parentAccountId,
+    child_learner_id: enrollment.childLearnerId,
+    assigned_goal_id: enrollment.assignedGoalId,
+    status: enrollment.status,
+    joined_at: enrollment.joinedAt,
+  };
+}
+
 function mapSupabaseState(
   profile: ProfileRow,
   reviewItemRows: ReviewItemRow[],
@@ -413,21 +763,36 @@ function mapSupabaseState(
     aiSettings?: AISettingsRow | null;
     aiProviderConnections: AIProviderConnectionRow[];
     aiUsageLogs: AIUsageLogRow[];
+    classrooms?: ClassroomRow[];
+    classGoalTemplates?: ClassGoalTemplateRow[];
+    classInvites?: ClassInviteRow[];
+    classEnrollments?: ClassEnrollmentRow[];
   },
 ): AppState {
   const localAiState = getLocalAiState(profile.session_id);
-
-  return buildCourseState({
-    onboarded: profile.onboarded,
-    streak: profile.streak,
-    currentDay: profile.current_day,
-    profile: {
+  const learnerState = normalizeLearnerSpaces({
+    activeLearnerId: profile.active_learner_id ?? undefined,
+    learners: profile.learners ?? undefined,
+    profile: normalizeLearnerProfile({
+      activeGoalId: profile.active_goal_id ?? undefined,
+      goals: profile.goals ?? undefined,
       targetLanguage: profile.target_language as TargetLanguage,
       nativeLanguage: profile.native_language as NativeLanguage,
       level: profile.level as ProficiencyLevel,
       dailyMinutes: profile.daily_minutes,
       focus: profile.focus as LearningFocus,
-    },
+    }),
+  });
+
+  return buildCourseState({
+    onboarded: profile.onboarded,
+    streak: profile.streak,
+    accountMode: profile.account_mode ?? "supervisor",
+    supervisorPinHash: profile.supervisor_pin_hash ?? localAiState.supervisorPinHash,
+    activeLearnerId: learnerState.activeLearnerId,
+    learners: learnerState.learners,
+    currentDay: profile.current_day,
+    profile: learnerState.profile,
     reviewItems: reviewItemRows.map(reviewItemFromRow),
     reviewLogs: reviewLogRows.map(reviewLogFromRow),
     learningSources: aiRows?.learningSources.map(learningSourceFromRow) ?? localAiState.learningSources,
@@ -435,6 +800,10 @@ function mapSupabaseState(
     aiSettings: aiRows?.aiSettings ? aiSettingsFromRow(aiRows.aiSettings) : localAiState.aiSettings,
     aiProviderConnections: aiRows?.aiProviderConnections.map(aiProviderConnectionFromRow) ?? localAiState.aiProviderConnections,
     aiUsageLogs: aiRows?.aiUsageLogs.map(aiUsageLogFromRow) ?? localAiState.aiUsageLogs,
+    classrooms: aiRows?.classrooms?.map(classroomFromRow) ?? localAiState.classrooms,
+    classGoalTemplates: aiRows?.classGoalTemplates?.map(classGoalTemplateFromRow) ?? localAiState.classGoalTemplates,
+    classInvites: aiRows?.classInvites?.map(classInviteFromRow) ?? localAiState.classInvites,
+    classEnrollments: aiRows?.classEnrollments?.map(classEnrollmentFromRow) ?? localAiState.classEnrollments,
   });
 }
 
@@ -447,6 +816,11 @@ function getLocalAiState(sessionId: string) {
     aiSettings: state?.aiSettings ?? normalizeAiSettings(),
     aiProviderConnections: state?.aiProviderConnections ?? [],
     aiUsageLogs: state?.aiUsageLogs ?? [],
+    supervisorPinHash: state?.supervisorPinHash,
+    classrooms: state?.classrooms ?? [],
+    classGoalTemplates: state?.classGoalTemplates ?? [],
+    classInvites: state?.classInvites ?? [],
+    classEnrollments: state?.classEnrollments ?? [],
   };
 }
 
@@ -475,6 +849,10 @@ function rebuildState(
       AppState,
       | "onboarded"
       | "streak"
+      | "accountMode"
+      | "supervisorPinHash"
+      | "activeLearnerId"
+      | "learners"
       | "profile"
       | "currentDay"
       | "reviewItems"
@@ -484,12 +862,20 @@ function rebuildState(
       | "aiSettings"
       | "aiProviderConnections"
       | "aiUsageLogs"
+      | "classrooms"
+      | "classGoalTemplates"
+      | "classInvites"
+      | "classEnrollments"
     >
   >,
 ) {
   return buildCourseState({
     onboarded: overrides.onboarded ?? state.onboarded,
     streak: overrides.streak ?? state.streak,
+    accountMode: overrides.accountMode ?? state.accountMode,
+    supervisorPinHash: overrides.supervisorPinHash ?? state.supervisorPinHash,
+    activeLearnerId: overrides.activeLearnerId ?? state.activeLearnerId,
+    learners: overrides.learners ?? state.learners,
     profile: overrides.profile ?? state.profile ?? createInitialState().profile!,
     currentDay: overrides.currentDay ?? state.currentDay,
     reviewItems: overrides.reviewItems ?? state.reviewItems,
@@ -499,6 +885,10 @@ function rebuildState(
     aiSettings: overrides.aiSettings ?? state.aiSettings,
     aiProviderConnections: overrides.aiProviderConnections ?? state.aiProviderConnections,
     aiUsageLogs: overrides.aiUsageLogs ?? state.aiUsageLogs,
+    classrooms: overrides.classrooms ?? state.classrooms,
+    classGoalTemplates: overrides.classGoalTemplates ?? state.classGoalTemplates,
+    classInvites: overrides.classInvites ?? state.classInvites,
+    classEnrollments: overrides.classEnrollments ?? state.classEnrollments,
   });
 }
 
@@ -561,6 +951,33 @@ function sortReviewPriority(a: ReviewItem, b: ReviewItem) {
   return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
 }
 
+function getActiveScope(state: AppState) {
+  const activeLearner = getActiveLearner(state);
+  const activeGoalId = activeLearner?.profile.activeGoalId;
+
+  return {
+    learnerId: activeLearner?.id ?? DEFAULT_LEARNER_ID,
+    goalId: activeGoalId,
+  };
+}
+
+function itemMatchesScope(item: { learnerId?: string; goalId?: string; domain?: LearningDomain }, scope: { learnerId: string; goalId?: string }) {
+  const learnerMatches = (item.learnerId ?? DEFAULT_LEARNER_ID) === scope.learnerId;
+  const goalMatches = scope.goalId ? !item.goalId || item.goalId === scope.goalId : true;
+
+  return learnerMatches && goalMatches;
+}
+
+function getScopedReviewItems(state: AppState) {
+  const scope = getActiveScope(state);
+  return state.reviewItems.filter((item) => itemMatchesScope(item, scope));
+}
+
+function getScopedReviewLogs(state: AppState) {
+  const scope = getActiveScope(state);
+  return state.reviewLogs.filter((log) => itemMatchesScope(log, scope));
+}
+
 function buildReviewLog(item: ReviewItem, grade: ReviewGrade, reviewedAt: Date, sessionType: ReviewSessionType, options: ReviewSubmissionOptions): ReviewLog {
   return {
     itemId: item.id,
@@ -572,6 +989,10 @@ function buildReviewLog(item: ReviewItem, grade: ReviewGrade, reviewedAt: Date, 
     responseMs: options.responseMs,
     lessonId: item.lessonId,
     unitId: item.unitId,
+    learnerId: item.learnerId,
+    goalId: item.goalId,
+    domain: item.domain,
+    skillDimension: item.skillDimension,
     learningType: item.learningType,
     outcome: isCorrectGrade(grade) ? "correct" : "incorrect",
   };
@@ -601,7 +1022,8 @@ function applyReviewUpdate(item: ReviewItem, grade: ReviewGrade, reviewedAt: Dat
 
 function getReviewBucketsFromState(state: AppState) {
   const budget = getTodayBudget(state.profile?.dailyMinutes ?? 15);
-  const dueItems = state.reviewItems.filter((item) => new Date(item.dueDate).getTime() <= Date.now());
+  const scopedItems = getScopedReviewItems(state);
+  const dueItems = scopedItems.filter((item) => new Date(item.dueDate).getTime() <= Date.now());
   const must = dueItems
     .filter((item) => getOverdueDays(item) >= 1 || item.lapseCount >= 2 || item.needsReinforcement)
     .sort(sortReviewPriority);
@@ -609,7 +1031,7 @@ function getReviewBucketsFromState(state: AppState) {
     .filter((item) => !must.some((mustItem) => mustItem.id === item.id))
     .sort(sortReviewPriority);
 
-  const canCandidates = state.reviewItems
+  const canCandidates = scopedItems
     .filter((item) => !dueItems.some((dueItem) => dueItem.id === item.id))
     .filter((item) => item.needsReinforcement || item.lapseCount > 0 || item.lastOutcome === "again" || item.lastOutcome === "hard")
     .sort(sortReviewPriority)
@@ -719,12 +1141,16 @@ async function fetchStateFromSupabase(sessionId: string): Promise<AppState | nul
 
   const aiRows = await (async () => {
     try {
-      const [sources, plans, settings, connections, usageLogs] = await Promise.all([
+      const [sources, plans, settings, connections, usageLogs, classrooms, templates, invites, enrollments] = await Promise.all([
         client.from("learning_sources").select("*").eq("session_id", sessionId).order("created_at", { ascending: false }).limit(30),
         client.from("generated_plans").select("*").eq("session_id", sessionId).order("created_at", { ascending: false }).limit(20),
         client.from("ai_settings").select("*").eq("session_id", sessionId).maybeSingle(),
         client.from("ai_provider_connections").select("*").eq("session_id", sessionId),
         client.from("ai_usage_logs").select("*").eq("session_id", sessionId).order("created_at", { ascending: false }).limit(200),
+        client.from("classrooms").select("*").eq("session_id", sessionId).order("created_at", { ascending: false }),
+        client.from("class_goal_templates").select("*").eq("session_id", sessionId).order("created_at", { ascending: false }),
+        client.from("class_invites").select("*").eq("session_id", sessionId).order("created_at", { ascending: false }),
+        client.from("class_enrollments").select("*").eq("session_id", sessionId).order("joined_at", { ascending: false }),
       ]);
 
       if (sources.error || plans.error || connections.error || usageLogs.error) {
@@ -737,6 +1163,10 @@ async function fetchStateFromSupabase(sessionId: string): Promise<AppState | nul
         aiSettings: settings.error ? undefined : settings.data as unknown as AISettingsRow | null,
         aiProviderConnections: connections.data as unknown as AIProviderConnectionRow[],
         aiUsageLogs: usageLogs.data as unknown as AIUsageLogRow[],
+        classrooms: classrooms.error ? undefined : classrooms.data as unknown as ClassroomRow[],
+        classGoalTemplates: templates.error ? undefined : templates.data as unknown as ClassGoalTemplateRow[],
+        classInvites: invites.error ? undefined : invites.data as unknown as ClassInviteRow[],
+        classEnrollments: enrollments.error ? undefined : enrollments.data as unknown as ClassEnrollmentRow[],
       };
     } catch {
       return undefined;
@@ -768,9 +1198,21 @@ export async function readState(sessionId: string) {
 export async function saveProfile(sessionId: string, profile: LearnerProfile) {
   const client = getSupabaseAdminClient();
   const currentState = await readState(sessionId);
+  const learnerState = normalizeLearnerSpaces({
+    profile,
+    activeLearnerId: currentState.activeLearnerId,
+    learners: currentState.learners,
+  });
+  const learners = learnerState.learners.map((learner) =>
+    learner.id === learnerState.activeLearnerId
+      ? { ...learner, profile: normalizeLearnerProfile(profile), updatedAt: new Date().toISOString() }
+      : learner,
+  );
   const nextState = rebuildState(currentState, {
     onboarded: true,
-    profile,
+    activeLearnerId: learnerState.activeLearnerId,
+    learners,
+    profile: normalizeLearnerProfile(profile),
   });
 
   if (!client) {
@@ -844,7 +1286,11 @@ export async function completeLesson(sessionId: string, lessonId: string) {
   const currentUnitIndex = currentUnitLessons.findIndex((item) => item.id === lessonId);
   const unitCompleted = currentUnitIndex >= 0 && currentUnitIndex === currentUnitLessons.length - 1;
 
-  const newReviewItems = buildReviewItemsForLesson(courseLesson).filter(
+  const activeLearnerId = state.activeLearnerId ?? DEFAULT_LEARNER_ID;
+  const newReviewItems = buildReviewItemsForLesson(courseLesson).map((item) => ({
+    ...item,
+    learnerId: activeLearnerId,
+  })).filter(
     (item) => !state.reviewItems.some((existing) => existing.id === item.id),
   );
   const mergedReviewItems = [...state.reviewItems, ...newReviewItems];
@@ -911,6 +1357,8 @@ function generatedDayToCourseLesson(plan: GeneratedLearningPlan, day: GeneratedP
   return {
     id: day.lessonId,
     unitId: `generated-${plan.id}`,
+    goalId: plan.goalId,
+    domain: plan.domain,
     lessonNumber: day.dayNumber,
     dayNumber: day.dayNumber,
     title: day.title,
@@ -933,7 +1381,10 @@ export async function completeGeneratedLesson(sessionId: string, lessonId: strin
   }
 
   const courseLesson = generatedDayToCourseLesson(plan, day);
-  const newReviewItems = buildReviewItemsForLesson(courseLesson).filter(
+  const newReviewItems = buildReviewItemsForLesson(courseLesson).map((item) => ({
+    ...item,
+    learnerId: plan.learnerId ?? state.activeLearnerId ?? DEFAULT_LEARNER_ID,
+  })).filter(
     (item) => !state.reviewItems.some((existing) => existing.id === item.id),
   );
   const completedAt = new Date().toISOString();
@@ -1235,9 +1686,435 @@ export async function saveAiSettings(sessionId: string, settings: AISettings) {
   return nextSettings;
 }
 
+async function persistProfileState(sessionId: string, state: AppState) {
+  const client = getSupabaseAdminClient();
+
+  if (!client) {
+    replaceLocalState(sessionId, state);
+    return;
+  }
+
+  try {
+    await ensureSupabaseState(sessionId);
+    await client.from("learner_profiles").upsert(
+      {
+        ...profileToRow(sessionId, state),
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "session_id" },
+    );
+  } catch {
+    // Local state remains authoritative when optional profile columns are not migrated yet.
+  }
+
+  replaceLocalState(sessionId, state);
+}
+
+async function persistClassState(sessionId: string, state: AppState) {
+  const client = getSupabaseAdminClient();
+
+  replaceLocalState(sessionId, state);
+
+  if (!client) {
+    return;
+  }
+
+  try {
+    await ensureSupabaseState(sessionId);
+    await Promise.all([
+      ...state.classrooms.map((classroom) =>
+        client.from("classrooms").upsert(classroomToRow(sessionId, classroom), { onConflict: "session_id,classroom_id" }),
+      ),
+      ...state.classGoalTemplates.map((template) =>
+        client.from("class_goal_templates").upsert(classGoalTemplateToRow(sessionId, template), { onConflict: "session_id,template_id" }),
+      ),
+      ...state.classInvites.map((invite) =>
+        client.from("class_invites").upsert(classInviteToRow(sessionId, invite), { onConflict: "session_id,invite_id" }),
+      ),
+      ...state.classEnrollments.map((enrollment) =>
+        client.from("class_enrollments").upsert(classEnrollmentToRow(sessionId, enrollment), { onConflict: "session_id,enrollment_id" }),
+      ),
+    ]);
+  } catch {
+    // Class tables are optional during local migration rollout.
+  }
+}
+
+async function persistGeneratedPlans(sessionId: string, plans: GeneratedLearningPlan[]) {
+  const client = getSupabaseAdminClient();
+
+  if (!client) {
+    return;
+  }
+
+  try {
+    await ensureSupabaseState(sessionId);
+    await Promise.all(
+      plans.map((plan) =>
+        client.from("generated_plans").upsert(generatedPlanToRow(sessionId, plan), { onConflict: "session_id,generated_plan_id" }),
+      ),
+    );
+  } catch {
+    // Local state remains usable when generated plan persistence is unavailable.
+  }
+}
+
+export async function createClassroom(sessionId: string, params: { title: string; schoolName?: string; gradeBand?: string }) {
+  const state = await readState(sessionId);
+  const createdAt = new Date().toISOString();
+  const classroom: Classroom = {
+    id: makeId("class", params.title),
+    teacherAccountId: sessionId,
+    title: params.title.trim() || "Classroom",
+    schoolName: params.schoolName?.trim() || undefined,
+    gradeBand: params.gradeBand?.trim() || undefined,
+    createdAt,
+  };
+  const nextState = rebuildState(state, {
+    classrooms: [classroom, ...state.classrooms.filter((item) => item.id !== classroom.id)],
+  });
+
+  await persistClassState(sessionId, nextState);
+  return classroom;
+}
+
+export async function createClassGoalTemplate(sessionId: string, classroomId: string, params: { goalId?: string; title?: string }) {
+  const state = await readState(sessionId);
+  const classroom = state.classrooms.find((item) => item.id === classroomId);
+  const activeGoal = getActiveLearner(state)?.profile.goals?.find((goal) => goal.id === params.goalId)
+    ?? getActiveLearner(state)?.profile.goals?.find((goal) => goal.id === getActiveLearner(state)?.profile.activeGoalId)
+    ?? state.profile?.goals?.[0];
+
+  if (!classroom || !activeGoal) {
+    return null;
+  }
+
+  const template = {
+    ...makeClassGoalTemplate({ classroomId, goal: activeGoal }),
+    title: params.title?.trim() || activeGoal.title,
+  };
+  const nextState = rebuildState(state, {
+    classGoalTemplates: [template, ...state.classGoalTemplates.filter((item) => item.id !== template.id)],
+  });
+
+  await persistClassState(sessionId, nextState);
+  return template;
+}
+
+export async function createClassInvite(sessionId: string, classroomId: string, templateId: string, params: { expiresAt?: string } = {}) {
+  const state = await readState(sessionId);
+  const classroom = state.classrooms.find((item) => item.id === classroomId);
+  const template = state.classGoalTemplates.find((item) => item.id === templateId);
+
+  if (!classroom || !template) {
+    return null;
+  }
+
+  const code = `${classroomId.replace(/^class-/, "").slice(0, 10)}-${Math.random().toString(36).slice(2, 8)}`;
+  const invite: ClassInvite = {
+    id: makeId("invite", code),
+    classroomId,
+    templateId,
+    code,
+    status: "active",
+    expiresAt: params.expiresAt,
+    createdAt: new Date().toISOString(),
+  };
+  const nextState = rebuildState(state, {
+    classInvites: [invite, ...state.classInvites.filter((item) => item.id !== invite.id)],
+  });
+
+  await persistClassState(sessionId, nextState);
+  return invite;
+}
+
+export async function findClassInvite(code: string) {
+  const normalizedCode = code.trim();
+  const client = getSupabaseAdminClient();
+
+  if (client) {
+    try {
+      const { data: inviteRow } = await client.from("class_invites").select("*").eq("code", normalizedCode).eq("status", "active").maybeSingle();
+      if (inviteRow) {
+        const sessionId = String((inviteRow as { session_id: string }).session_id);
+        const state = await readState(sessionId);
+        const invite = classInviteFromRow(inviteRow as unknown as ClassInviteRow);
+        const classroom = state.classrooms.find((item) => item.id === invite.classroomId);
+        const template = state.classGoalTemplates.find((item) => item.id === invite.templateId);
+        return classroom && template ? { teacherSessionId: sessionId, classroom, template, invite } : null;
+      }
+    } catch {
+      // Fall through to local lookup.
+    }
+  }
+
+  const local = findLocalClassInviteByCode(normalizedCode);
+  if (!local || local.invite.status !== "active") {
+    return null;
+  }
+
+  const classroom = local.state.classrooms.find((item) => item.id === local.invite.classroomId);
+  const template = local.state.classGoalTemplates.find((item) => item.id === local.invite.templateId);
+
+  return classroom && template
+    ? { teacherSessionId: local.sessionId, classroom, template, invite: local.invite }
+    : null;
+}
+
+export async function acceptClassInvite(sessionId: string, code: string, params: { childLearnerId?: string; childName?: string }) {
+  const inviteContext = await findClassInvite(code);
+  const parentState = await readState(sessionId);
+
+  if (!inviteContext) {
+    return null;
+  }
+
+  const now = new Date().toISOString();
+  const currentLearners = parentState.learners ?? [];
+  const baseProfile = parentState.profile ?? createInitialState().profile!;
+  const childLearner = params.childLearnerId
+    ? currentLearners.find((learner) => learner.id === params.childLearnerId)
+    : undefined;
+  const nextChildLearner = childLearner ?? makeChildLearner(params.childName?.trim() || "Child learner", baseProfile);
+  const assignedGoal = makeAssignedGoalFromTemplate(inviteContext.template, nextChildLearner);
+  const updatedChild = assignGoalToLearner(nextChildLearner, assignedGoal);
+  const enrollment: ClassEnrollment = {
+    id: makeId("enrollment", `${inviteContext.classroom.id}-${updatedChild.id}-${assignedGoal.id}`),
+    classroomId: inviteContext.classroom.id,
+    templateId: inviteContext.template.id,
+    parentAccountId: sessionId,
+    childLearnerId: updatedChild.id,
+    assignedGoalId: assignedGoal.id,
+    status: "active",
+    joinedAt: now,
+  };
+  const teacherState = await readState(inviteContext.teacherSessionId);
+  const copiedPlans = cloneGeneratedPlansForAssignedGoal({
+    plans: teacherState.generatedPlans,
+    sourceGoalId: inviteContext.template.sourceGoalId,
+    assignedGoalId: assignedGoal.id,
+    childLearnerId: updatedChild.id,
+  });
+  const parentNext = rebuildState(parentState, {
+    activeLearnerId: updatedChild.id,
+    learners: [updatedChild, ...currentLearners.filter((learner) => learner.id !== updatedChild.id)],
+    profile: updatedChild.profile,
+    generatedPlans: [...copiedPlans, ...parentState.generatedPlans],
+    classEnrollments: [enrollment, ...parentState.classEnrollments.filter((item) => item.id !== enrollment.id)],
+  });
+  const teacherNext = rebuildState(teacherState, {
+    classEnrollments: [enrollment, ...teacherState.classEnrollments.filter((item) => item.id !== enrollment.id)],
+  });
+
+  await persistClassState(sessionId, parentNext);
+  if (inviteContext.teacherSessionId !== sessionId) {
+    await persistClassState(inviteContext.teacherSessionId, teacherNext);
+  }
+
+  return {
+    classroom: inviteContext.classroom,
+    template: inviteContext.template,
+    enrollment,
+    learner: updatedChild,
+    goal: assignedGoal,
+  };
+}
+
+export async function getClassSummary(sessionId: string, classroomId: string) {
+  const state = await readState(sessionId);
+  const classroom = state.classrooms.find((item) => item.id === classroomId);
+
+  if (!classroom) {
+    return null;
+  }
+
+  const enrollments = state.classEnrollments.filter((item) => item.classroomId === classroomId && item.status === "active");
+  const templates = state.classGoalTemplates.filter((item) => item.classroomId === classroomId);
+  const invites = state.classInvites.filter((item) => item.classroomId === classroomId && item.status === "active");
+
+  return {
+    classroom,
+    templates,
+    invites,
+    enrollments,
+    joinedCount: enrollments.length,
+    activeInviteCount: invites.length,
+    templateCount: templates.length,
+  };
+}
+
+export async function syncClassTemplate(sessionId: string, classroomId: string, templateId: string) {
+  const state = await readState(sessionId);
+  const template = state.classGoalTemplates.find((item) => item.id === templateId && item.classroomId === classroomId);
+
+  if (!template) {
+    return null;
+  }
+
+  const updatedTemplate: ClassGoalTemplate = {
+    ...template,
+    templateVersion: template.templateVersion + 1,
+    updatedAt: new Date().toISOString(),
+  };
+  const activeEnrollments = state.classEnrollments.filter(
+    (enrollment) =>
+      enrollment.classroomId === classroomId &&
+      enrollment.templateId === templateId &&
+      enrollment.status === "active",
+  );
+  const nextState = rebuildState(state, {
+    classGoalTemplates: state.classGoalTemplates.map((item) => item.id === templateId ? updatedTemplate : item),
+  });
+
+  await persistClassState(sessionId, nextState);
+
+  let syncedChildGoalCount = 0;
+  let syncedPlanCount = 0;
+
+  for (const enrollment of activeEnrollments) {
+    const parentState = await readState(enrollment.parentAccountId);
+    const childLearner = parentState.learners?.find((learner) => learner.id === enrollment.childLearnerId && !learner.archivedAt);
+
+    if (!childLearner) {
+      continue;
+    }
+
+    const updatedChild = updateLearnerAssignedGoal(childLearner, enrollment, updatedTemplate);
+    const copiedPlans = cloneGeneratedPlansForAssignedGoal({
+      plans: nextState.generatedPlans,
+      sourceGoalId: updatedTemplate.sourceGoalId,
+      assignedGoalId: enrollment.assignedGoalId,
+      childLearnerId: enrollment.childLearnerId,
+    });
+    const mergedPlans = mergeAssignedGeneratedPlans(parentState.generatedPlans, copiedPlans);
+    const nextParentState = rebuildState(parentState, {
+      activeLearnerId: parentState.activeLearnerId,
+      learners: (parentState.learners ?? []).map((learner) => learner.id === updatedChild.id ? updatedChild : learner),
+      profile: parentState.activeLearnerId === updatedChild.id ? updatedChild.profile : parentState.profile,
+      generatedPlans: mergedPlans,
+    });
+
+    await persistProfileState(enrollment.parentAccountId, nextParentState);
+    await persistGeneratedPlans(enrollment.parentAccountId, mergedPlans.filter((plan) => plan.learnerId === enrollment.childLearnerId));
+    syncedChildGoalCount += 1;
+    syncedPlanCount += copiedPlans.length;
+  }
+
+  return {
+    template: updatedTemplate,
+    syncedChildGoalCount,
+    syncedPlanCount,
+  };
+}
+
+export async function createSupervisedLearner(sessionId: string, params: { displayName: string }) {
+  const state = await readState(sessionId);
+  const learner = makeChildLearner(params.displayName.trim() || "Child learner", state.profile ?? createInitialState().profile!);
+  const nextState = rebuildState(state, {
+    activeLearnerId: learner.id,
+    learners: [learner, ...(state.learners ?? []).filter((item) => item.id !== learner.id)],
+    profile: learner.profile,
+  });
+
+  await persistProfileState(sessionId, nextState);
+  return learner;
+}
+
+export async function switchActiveLearner(sessionId: string, learnerId: string) {
+  const state = await readState(sessionId);
+  const learner = state.learners?.find((item) => item.id === learnerId && !item.archivedAt);
+
+  if (!learner) {
+    return null;
+  }
+
+  const nextState = rebuildState(state, {
+    activeLearnerId: learner.id,
+    profile: learner.profile,
+  });
+
+  await persistProfileState(sessionId, nextState);
+  return learner;
+}
+
+export async function setSupervisorPin(sessionId: string, pin: string) {
+  const state = await readState(sessionId);
+  const nextState = rebuildState(state, {
+    accountMode: "supervisor",
+    supervisorPinHash: hashSupervisorPin(sessionId, pin),
+  });
+
+  await persistProfileState(sessionId, nextState);
+  return true;
+}
+
+export async function verifySupervisorPin(sessionId: string, pin: string) {
+  const state = await readState(sessionId);
+  return verifySupervisorPinHash(sessionId, pin, state.supervisorPinHash);
+}
+
+export async function setAccountMode(sessionId: string, params: { mode: AccountMode; learnerId?: string }) {
+  const state = await readState(sessionId);
+  let activeLearner = params.learnerId
+    ? state.learners?.find((learner) => learner.id === params.learnerId && !learner.archivedAt)
+    : getActiveLearner(state);
+
+  if (!activeLearner) {
+    return null;
+  }
+
+  if (params.mode === "child" && activeLearner.kind !== "supervised-student") {
+    activeLearner = state.learners?.find((learner) => learner.kind === "supervised-student" && !learner.archivedAt);
+  }
+
+  if (!activeLearner) {
+    return null;
+  }
+
+  const nextState = rebuildState(state, {
+    accountMode: params.mode,
+    activeLearnerId: activeLearner.id,
+    profile: activeLearner.profile,
+  });
+
+  await persistProfileState(sessionId, nextState);
+  return {
+    mode: nextState.accountMode,
+    learner: activeLearner,
+  };
+}
+
+export async function switchActiveLearningGoal(sessionId: string, goalId: string) {
+  const state = await readState(sessionId);
+  const activeLearner = getActiveLearner(state);
+  const goal = activeLearner?.profile.goals?.find((item) => item.id === goalId && !item.archivedAt);
+
+  if (!activeLearner || !goal) {
+    return null;
+  }
+
+  const updatedLearner: LearnerSpace = {
+    ...activeLearner,
+    profile: normalizeLearnerProfile({
+      ...activeLearner.profile,
+      activeGoalId: goal.id,
+      dailyMinutes: goal.dailyMinutes,
+      level: goal.level,
+    }),
+    updatedAt: new Date().toISOString(),
+  };
+  const nextState = rebuildState(state, {
+    learners: (state.learners ?? []).map((learner) => learner.id === updatedLearner.id ? updatedLearner : learner),
+    profile: updatedLearner.profile,
+  });
+
+  await persistProfileState(sessionId, nextState);
+  return goal;
+}
+
 export async function getDueReviewItems(sessionId: string) {
   const state = await readState(sessionId);
-  return state.reviewItems.filter((item) => new Date(item.dueDate).getTime() <= Date.now()).sort(sortReviewPriority);
+  return getScopedReviewItems(state).filter((item) => new Date(item.dueDate).getTime() <= Date.now()).sort(sortReviewPriority);
 }
 
 export async function getTodayReviewPlan(sessionId: string) {
@@ -1262,7 +2139,7 @@ export async function getScheduledReviewItems(sessionId: string) {
 
 export async function getDiagnosticReviewItems(sessionId: string, lessonId: string) {
   const state = await readState(sessionId);
-  return state.reviewItems.filter((item) => item.lessonId === lessonId).slice(0, 3);
+  return getScopedReviewItems(state).filter((item) => item.lessonId === lessonId).slice(0, 3);
 }
 
 export async function getLessonWarmupItems(sessionId: string, lessonId: string) {
@@ -1273,7 +2150,7 @@ export async function getLessonWarmupItems(sessionId: string, lessonId: string) 
     return [];
   }
 
-  return state.reviewItems
+  return getScopedReviewItems(state)
     .filter((item) => item.unitId === targetLesson.unitId && item.lessonId !== lessonId)
     .filter((item) => item.needsReinforcement || item.lapseCount >= 2 || item.lastOutcome === "again")
     .sort(sortReviewPriority)
@@ -1290,7 +2167,7 @@ export async function getExtraReviewItems(
     state.plan.filter((item) => item.dayNumber < state.currentDay).map((item) => item.lessonId),
   );
 
-  const base = state.reviewItems.filter((item) => completedLessonIds.has(item.lessonId));
+  const base = getScopedReviewItems(state).filter((item) => completedLessonIds.has(item.lessonId));
   const sorted = [...base].sort(sortReviewPriority);
 
   if (scope === "lesson" && lessonId) {
@@ -1319,7 +2196,7 @@ export async function reviewItem(sessionId: string, itemId: string, grade: Revie
   const persistPerformance = async (item: ReviewItem) => {
     await recordLearningPerformance({
       sessionId,
-      learningType: item.learningType,
+      learningType: item.skillDimension,
       correct: isCorrectGrade(grade),
     });
   };
@@ -1385,6 +2262,10 @@ export async function reviewItem(sessionId: string, itemId: string, grade: Revie
       response_ms: options.responseMs ?? null,
       lesson_id: updated.lessonId,
       unit_id: updated.unitId,
+      learner_id: updated.learnerId ?? DEFAULT_LEARNER_ID,
+      goal_id: updated.goalId ?? null,
+      domain: updated.domain ?? null,
+      skill_dimension: updated.skillDimension,
       learning_type: updated.learningType,
       outcome: isCorrectGrade(grade) ? "correct" : "incorrect",
     });
@@ -1416,9 +2297,11 @@ export async function reviewItem(sessionId: string, itemId: string, grade: Revie
 }
 
 export function deriveStats(state: AppState) {
-  const dueCount = state.reviewItems.filter((item) => new Date(item.dueDate).getTime() <= Date.now()).length;
-  const masteredCount = state.reviewItems.filter((item) => item.intervalDays >= 4).length;
-  const weakItems = [...state.reviewItems]
+  const scopedItems = getScopedReviewItems(state);
+  const scopedLogs = getScopedReviewLogs(state);
+  const dueCount = scopedItems.filter((item) => new Date(item.dueDate).getTime() <= Date.now()).length;
+  const masteredCount = scopedItems.filter((item) => item.intervalDays >= 4).length;
+  const weakItems = [...scopedItems]
     .sort((a, b) => {
       const reinforcementDelta = Number(b.needsReinforcement) - Number(a.needsReinforcement);
       if (reinforcementDelta !== 0) {
@@ -1428,9 +2311,9 @@ export function deriveStats(state: AppState) {
       return b.lapseCount - a.lapseCount;
     })
     .slice(0, 3);
-  const formalReviews = state.reviewLogs.filter((log) => log.sessionType === "formal" || log.sessionType === "warmup").length;
-  const extraReviews = state.reviewLogs.filter((log) => log.sessionType === "extra").length;
-  const diagnosticReviews = state.reviewLogs.filter((log) => log.sessionType === "diagnostic").length;
+  const formalReviews = scopedLogs.filter((log) => log.sessionType === "formal" || log.sessionType === "warmup").length;
+  const extraReviews = scopedLogs.filter((log) => log.sessionType === "extra").length;
+  const diagnosticReviews = scopedLogs.filter((log) => log.sessionType === "diagnostic").length;
 
   return {
     dueCount,
@@ -1439,7 +2322,7 @@ export function deriveStats(state: AppState) {
     streak: state.streak,
     completedDays: Math.max(0, state.currentDay - 1),
     planDays: state.plan.length,
-    totalReviews: state.reviewLogs.length,
+    totalReviews: scopedLogs.length,
     formalReviews,
     extraReviews,
     diagnosticReviews,
@@ -1447,11 +2330,13 @@ export function deriveStats(state: AppState) {
 }
 
 export function deriveRetentionScore(state: AppState) {
-  if (state.reviewItems.length === 0) {
+  const scopedItems = getScopedReviewItems(state);
+
+  if (scopedItems.length === 0) {
     return 0;
   }
 
-  const total = state.reviewItems.reduce(
+  const total = scopedItems.reduce(
     (sum, item) =>
       sum +
       Math.min(
@@ -1465,21 +2350,22 @@ export function deriveRetentionScore(state: AppState) {
     0,
   );
 
-  return Math.round(total / state.reviewItems.length);
+  return Math.round(total / scopedItems.length);
 }
 
 export function deriveLearningTypeBreakdown(state: AppState) {
-  const entries = new Map<LearningType, { attempts: number; correct: number }>();
+  const entries = new Map<SkillDimension, { attempts: number; correct: number }>();
 
-  state.reviewLogs.forEach((log) => {
-    if (!log.learningType) {
+  getScopedReviewLogs(state).forEach((log) => {
+    const skillDimension = log.skillDimension ?? (log.learningType ? normalizeSkillDimension(log.learningType, log.domain) : undefined);
+    if (!skillDimension) {
       return;
     }
 
-    const current = entries.get(log.learningType) ?? { attempts: 0, correct: 0 };
+    const current = entries.get(skillDimension) ?? { attempts: 0, correct: 0 };
     current.attempts += 1;
     current.correct += log.outcome === "correct" ? 1 : 0;
-    entries.set(log.learningType, current);
+    entries.set(skillDimension, current);
   });
 
   return [...entries.entries()]
@@ -1494,7 +2380,7 @@ export function deriveLearningTypeBreakdown(state: AppState) {
 export function deriveLessonHotspots(state: AppState) {
   const aggregates = new Map<string, { lessonId: string; misses: number; total: number }>();
 
-  state.reviewLogs.forEach((log) => {
+  getScopedReviewLogs(state).forEach((log) => {
     if (!log.lessonId) {
       return;
     }

@@ -1,16 +1,18 @@
 import { ReviewTrainer } from "@/components/study/review-trainer";
 import { getLocale } from "@/lib/i18n-server";
+import { getActiveLearningGoal } from "@/lib/learning-goals";
 import { getWeakLearningTypes } from "@/lib/practice-performance";
-import { getTodayReviewPlan } from "@/lib/store";
+import { getTodayReviewPlan, readState } from "@/lib/store";
 import { getLearningPerformanceFromHeaders, getSessionIdFromHeaders } from "@/lib/session";
 
 export default async function ReviewPage() {
   const sessionId = await getSessionIdFromHeaders();
   const learningPerformance = await getLearningPerformanceFromHeaders();
-  const reviewPlan = await getTodayReviewPlan(sessionId);
+  const [reviewPlan, state] = await Promise.all([getTodayReviewPlan(sessionId), readState(sessionId)]);
   const items = reviewPlan.picked;
   const locale = await getLocale();
-  const weakTypes = getWeakLearningTypes(learningPerformance).slice(0, 2);
+  const activeDomain = state.profile ? getActiveLearningGoal(state.profile).domain : "language";
+  const weakTypes = getWeakLearningTypes(learningPerformance, activeDomain).slice(0, 2);
 
   return (
     <ReviewTrainer

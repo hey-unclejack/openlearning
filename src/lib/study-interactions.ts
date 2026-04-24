@@ -1,16 +1,29 @@
 import { InteractionType, LearningType, ProficiencyLevel } from "@/lib/types";
 
 export const learningTypeInteractionMap: Record<LearningType, InteractionType[]> = {
+  translation: ["tap-assemble", "type-translation", "speech-translation"],
   "sentence-translation": ["tap-assemble", "type-translation", "speech-translation"],
   vocabulary: ["tap-match", "tap-assemble", "type-translation"],
   listening: ["listen-select", "listen-transcribe", "type-translation"],
   speaking: ["speak-repeat", "speech-translation", "type-translation"],
   writing: ["guided-write", "type-translation", "error-correction"],
-  grammar: ["fill-in-blank", "error-correction", "tap-assemble"]
+  grammar: ["fill-in-blank", "error-correction", "tap-assemble"],
+  comprehension: ["type-translation", "tap-match"],
+  "main-idea": ["guided-write", "type-translation"],
+  rewrite: ["guided-write", "error-correction"],
+  summary: ["guided-write", "type-translation"],
+  concept: ["type-translation", "tap-match"],
+  procedure: ["tap-assemble", "type-translation"],
+  calculation: ["fill-in-blank", "type-translation"],
+  "word-problem": ["guided-write", "type-translation"],
+  "error-analysis": ["error-correction", "guided-write"],
+  recall: ["type-translation", "tap-match"],
+  application: ["guided-write", "type-translation"],
+  explanation: ["guided-write", "type-translation"]
 };
 
 export function resolveLearningType(value?: LearningType): LearningType {
-  return value ?? "sentence-translation";
+  return value ?? "translation";
 }
 
 export function pickInteractionType(params: {
@@ -38,7 +51,7 @@ export function pickInteractionType(params: {
     candidates = candidates.filter((mode) => mode !== "guided-write");
   }
 
-  if (params.level === "B2" && learningType === "sentence-translation" && params.supportsSpeech) {
+  if (params.level === "B2" && (learningType === "sentence-translation" || learningType === "translation") && params.supportsSpeech) {
     candidates = ["speech-translation", "type-translation", ...candidates];
   }
 
