@@ -1,10 +1,39 @@
+import {
+  Card,
+  Grade,
+  Rating,
+  State,
+  createEmptyCard,
+  fsrs,
+} from "ts-fsrs";
 import { AppLocale } from "@/lib/i18n";
-import { ReviewGrade, ReviewItem } from "@/lib/types";
+import { FsrsCardState, ReviewGrade, ReviewItem } from "@/lib/types";
 
-const DAY_MS = 24 * 60 * 60 * 1000;
+export const DEFAULT_DESIRED_RETENTION = 0.9;
 
-function addDays(date: Date, days: number) {
-  return new Date(date.getTime() + days * DAY_MS);
+const stateToFsrs: Record<FsrsCardState, State> = {
+  New: State.New,
+  Learning: State.Learning,
+  Review: State.Review,
+  Relearning: State.Relearning,
+};
+
+const stateFromFsrs: Record<State, FsrsCardState> = {
+  [State.New]: "New",
+  [State.Learning]: "Learning",
+  [State.Review]: "Review",
+  [State.Relearning]: "Relearning",
+};
+
+export function reviewGradeToFsrsRating(grade: ReviewGrade): Grade {
+  const ratings: Record<ReviewGrade, Grade> = {
+    again: Rating.Again,
+    hard: Rating.Hard,
+    good: Rating.Good,
+    easy: Rating.Easy,
+  };
+
+  return ratings[grade];
 }
 
 export function scoreToLabel(grade: ReviewGrade, locale: AppLocale = "zh-TW") {
@@ -26,47 +55,95 @@ export function scoreToLabel(grade: ReviewGrade, locale: AppLocale = "zh-TW") {
   return labels[grade];
 }
 
+function normalizeDesiredRetention(value?: number) {
+  if (!Number.isFinite(value)) {
+    return DEFAULT_DESIRED_RETENTION;
+  }
+
+  return Math.min(0.97, Math.max(0.75, value ?? DEFAULT_DESIRED_RETENTION));
+}
+
+export function makeFsrsScheduler(desiredRetention = DEFAULT_DESIRED_RETENTION) {
+  return fsrs({
+    request_retention: normalizeDesiredRetention(desiredRetention),
+    enable_fuzz: false,
+    enable_short_term: false,
+  });
+}
+
+export function reviewItemToFsrsCard(item: ReviewItem): Card {
+  const fallback = createEmptyCard(new Date(item.dueDate));
+
+  return {
+    ...fallback,
+    due: new Date(item.dueDate),
+    stability: item.fsrsStability ?? fallback.stability,
+    difficulty: item.fsrsDifficulty ?? fallback.difficulty,
+    elapsed_days: item.fsrsElapsedDays ?? fallback.elapsed_days,
+    scheduled_days: item.fsrsScheduledDays ?? item.intervalDays ?? fallback.scheduled_days,
+    reps: item.fsrsReps ?? item.repetitionCount ?? fallback.reps,
+    lapses: item.fsrsLapses ?? item.lapseCount ?? fallback.lapses,
+    state: item.fsrsState ? stateToFsrs[item.fsrsState] : fallback.state,
+    last_review: item.fsrsLastReview
+      ? new Date(item.fsrsLastReview)
+      : item.lastReviewedAt
+        ? new Date(item.lastReviewedAt)
+        : fallback.last_review,
+  };
+}
+
+export function fsrsCardToReviewFields(card: Card) {
+  return {
+    fsrsState: stateFromFsrs[card.state],
+    fsrsStability: card.stability,
+    fsrsDifficulty: card.difficulty,
+    fsrsElapsedDays: card.elapsed_days,
+    fsrsScheduledDays: card.scheduled_days,
+    fsrsReps: card.reps,
+    fsrsLapses: card.lapses,
+    fsrsLastReview: card.last_review?.toISOString(),
+  };
+}
+
+export function initializeReviewItemFsrs(item: ReviewItem) {
+  const card = reviewItemToFsrsCard(item);
+
+  return {
+    ...item,
+    ...fsrsCardToReviewFields(card),
+  };
+}
+
+export function estimateRetrievability(item: ReviewItem, now = new Date()) {
+  const card = reviewItemToFsrsCard(item);
+
+  if (!card.last_review || card.stability <= 0) {
+    return new Date(item.dueDate).getTime() <= now.getTime() ? 0.72 : 0.9;
+  }
+
+  return makeFsrsScheduler().get_retrievability(card, now, false);
+}
+
 export function updateReviewItem(
   item: ReviewItem,
   grade: ReviewGrade,
   reviewedAt = new Date(),
+  desiredRetention = DEFAULT_DESIRED_RETENTION,
 ) {
-  let easeFactor = item.easeFactor;
-  let intervalDays = item.intervalDays;
-  let repetitionCount = item.repetitionCount;
-  let lapseCount = item.lapseCount;
-
-  if (grade === "again") {
-    repetitionCount = 0;
-    lapseCount += 1;
-    intervalDays = 1;
-    easeFactor = Math.max(1.3, easeFactor - 0.2);
-  } else {
-    repetitionCount += 1;
-
-    if (repetitionCount === 1) {
-      intervalDays = grade === "hard" ? 1 : 2;
-    } else if (repetitionCount === 2) {
-      intervalDays = grade === "hard" ? 2 : grade === "easy" ? 6 : 4;
-    } else {
-      const multiplier =
-        grade === "hard" ? 1.2 : grade === "easy" ? easeFactor + 0.2 : easeFactor;
-      intervalDays = Math.max(1, Math.round(intervalDays * multiplier));
-    }
-
-    easeFactor = Math.max(
-      1.3,
-      grade === "easy" ? easeFactor + 0.15 : grade === "hard" ? easeFactor - 0.1 : easeFactor,
-    );
-  }
+  const scheduler = makeFsrsScheduler(desiredRetention);
+  const rating = reviewGradeToFsrsRating(grade);
+  const result = scheduler.next(reviewItemToFsrsCard(item), reviewedAt, rating);
+  const updatedCard = result.card;
+  const scheduledDays = Math.max(0, updatedCard.scheduled_days);
 
   return {
     ...item,
-    easeFactor,
-    intervalDays,
-    repetitionCount,
-    lapseCount,
+    ...fsrsCardToReviewFields(updatedCard),
+    easeFactor: item.easeFactor,
+    intervalDays: scheduledDays,
+    repetitionCount: updatedCard.reps,
+    lapseCount: updatedCard.lapses,
     lastReviewedAt: reviewedAt.toISOString(),
-    dueDate: addDays(reviewedAt, intervalDays).toISOString()
+    dueDate: updatedCard.due.toISOString(),
   };
 }

@@ -6,7 +6,8 @@ import { ReactNode } from "react";
 import { AppLocale, getLocaleCopy } from "@/lib/i18n";
 import { SiteTopbar } from "@/components/layout/site-topbar";
 import { APP_AVATAR_COOKIE, getCurrentUser, getSessionIdFromHeaders, resolveAvatarCookie } from "@/lib/session";
-import { deriveRetentionScore, deriveStats, readState } from "@/lib/store";
+import { getActiveLearningGoal, learningDomainLabel } from "@/lib/learning-goals";
+import { deriveRetentionScore, deriveStats, getTodayReviewPlan, readState } from "@/lib/store";
 
 function buildWeeklyActivity(reviewedAtValues: string[], locale: AppLocale) {
   const today = new Date();
@@ -42,16 +43,18 @@ export async function AppShell({
   children,
   activePath,
   userEmail,
-  locale
+  locale,
+  railContent,
 }: {
   children: ReactNode;
   activePath: Route;
   userEmail?: string;
   locale: AppLocale;
+  railContent?: ReactNode;
 }) {
   const sessionId = await getSessionIdFromHeaders();
   const cookieStore = await cookies();
-  const [currentUser, state] = await Promise.all([getCurrentUser(), readState(sessionId)]);
+  const [currentUser, state, reviewPlan] = await Promise.all([getCurrentUser(), readState(sessionId), getTodayReviewPlan(sessionId)]);
   const copy = getLocaleCopy(locale);
   const avatarCookie = resolveAvatarCookie(cookieStore.get(APP_AVATAR_COOKIE)?.value);
   const avatarUrl =
@@ -67,6 +70,14 @@ export async function AppShell({
   );
   const stats = deriveStats(state);
   const retentionScore = deriveRetentionScore(state);
+  const activeGoal = state.profile ? getActiveLearningGoal(state.profile) : undefined;
+  const reviewDebt = reviewPlan.counts.must + reviewPlan.counts.should;
+  const nextActionLabel =
+    reviewPlan.nextBestAction === "review"
+      ? locale === "zh-TW" ? "先完成正式複習" : "Clear formal review"
+      : reviewPlan.nextBestAction === "reinforce"
+        ? locale === "zh-TW" ? "安排弱項補強" : "Reinforce weak spots"
+        : locale === "zh-TW" ? "開啟今日新課" : "Open today's lesson";
   const allLinks: Array<{ href: Route; label: string }> = [
     { href: "/dashboard", label: copy.appShell.nav.dashboard },
     { href: "/ai", label: copy.appShell.nav.ai },
@@ -76,7 +87,7 @@ export async function AppShell({
     { href: "/progress", label: copy.appShell.nav.progress },
     { href: "/profile", label: copy.appShell.nav.profile }
   ];
-  const childModeAllowedPaths = new Set<Route>(["/dashboard", "/study/today", "/study/review", "/progress"]);
+  const childModeAllowedPaths = new Set<Route>(["/study/today", "/study/review", "/progress"]);
   const links = state.accountMode === "child" ? allLinks.filter((link) => childModeAllowedPaths.has(link.href)) : allLinks;
   const quickLinks: Array<{ href: Route; label: string }> = isProfileSection
     ? [
@@ -97,7 +108,7 @@ export async function AppShell({
     redirect(`/profile/goals?next=${encodeURIComponent(activePath)}`);
   }
 
-  const learningOnlyAllowed = activePath === "/dashboard" || activePath === "/study/today" || activePath === "/study/review" || activePath === "/progress";
+  const learningOnlyAllowed = activePath === "/study/today" || activePath === "/study/review" || activePath === "/progress";
   if (state.accountMode === "child" && !learningOnlyAllowed) {
     redirect("/study/today");
   }
@@ -121,6 +132,27 @@ export async function AppShell({
       <div className="app-grid">
         <aside className="sidebar">
           <div className="eyebrow">{copy.appShell.learningLoop}</div>
+          <div className="sidebar-mission">
+            <div>
+              <div className="sidebar-mission-label">{locale === "zh-TW" ? "下一步" : "Next"}</div>
+              <strong>{nextActionLabel}</strong>
+            </div>
+            <div className="sidebar-mission-grid">
+              <div>
+                <span>{reviewDebt}</span>
+                <small>{locale === "zh-TW" ? "待複習" : "reviews"}</small>
+              </div>
+              <div>
+                <span>{reviewPlan.memoryHealth}</span>
+                <small>{locale === "zh-TW" ? "記憶" : "memory"}</small>
+              </div>
+            </div>
+            {activeGoal ? (
+              <p>
+                {activeGoal.title} · {learningDomainLabel(activeGoal.domain, locale)}
+              </p>
+            ) : null}
+          </div>
           <nav>
             {links.map((link) => (
               <Link
@@ -135,23 +167,27 @@ export async function AppShell({
         </aside>
         <main className="content-panel app-main">{children}</main>
         <aside className="app-rail">
-          <div className="content-panel rail-panel">
-            <div className="eyebrow">{isProfileSection ? copy.profilePage.railEyebrow : copy.appShell.myLearning}</div>
-            <h2 className="section-title">
-              {isProfileSection ? copy.appShell.nav.profile : links.find((link) => link.href === activePath)?.label ?? copy.appShell.learningLoop}
-            </h2>
-            <p className="subtle">{isProfileSection ? copy.profilePage.railBody : userEmail ?? copy.appShell.tagline}</p>
-          </div>
-          <div className="content-panel rail-panel">
-            <div className="eyebrow">{isProfileSection ? copy.profilePage.railNavEyebrow : copy.appShell.learningLoop}</div>
-            <nav className="rail-links">
-              {quickLinks.map((link) => (
-                <Link key={link.href} href={link.href} data-active={activePath === link.href}>
-                  {link.label}
-                </Link>
-              ))}
-            </nav>
-          </div>
+          {railContent ?? (
+            <>
+              <div className="content-panel rail-panel">
+                <div className="eyebrow">{isProfileSection ? copy.profilePage.railEyebrow : copy.appShell.myLearning}</div>
+                <h2 className="section-title">
+                  {isProfileSection ? copy.appShell.nav.profile : links.find((link) => link.href === activePath)?.label ?? copy.appShell.learningLoop}
+                </h2>
+                <p className="subtle">{isProfileSection ? copy.profilePage.railBody : userEmail ?? copy.appShell.tagline}</p>
+              </div>
+              <div className="content-panel rail-panel">
+                <div className="eyebrow">{isProfileSection ? copy.profilePage.railNavEyebrow : copy.appShell.learningLoop}</div>
+                <nav className="rail-links">
+                  {quickLinks.map((link) => (
+                    <Link key={link.href} href={link.href} data-active={activePath === link.href}>
+                      {link.label}
+                    </Link>
+                  ))}
+                </nav>
+              </div>
+            </>
+          )}
         </aside>
       </div>
     </div>

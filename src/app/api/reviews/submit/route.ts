@@ -36,7 +36,17 @@ export async function POST(request: Request) {
     correct: body.grade !== "again",
   });
 
-  const response = NextResponse.json({ ok: true, item });
+  const response = NextResponse.json({
+    ok: true,
+    item,
+    schedule: {
+      dueDate: item.dueDate,
+      scheduledDays: item.fsrsScheduledDays ?? item.intervalDays,
+      state: item.fsrsState ?? "New",
+      stability: item.fsrsStability ?? 0,
+      difficulty: item.fsrsDifficulty ?? 0,
+    },
+  });
   response.cookies.set(APP_PERFORMANCE_COOKIE, serializeLearningPerformanceCookie(nextPerformance), {
     path: "/",
     sameSite: "lax",

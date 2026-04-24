@@ -1073,7 +1073,15 @@ export function buildReviewItemsForLesson(lesson: CourseLesson, now = new Date()
       dueDate: dueDate.toISOString(),
       lastOutcome: "unseen",
       lastConfidence: undefined,
-      needsReinforcement: false
+      needsReinforcement: false,
+      fsrsState: "New",
+      fsrsStability: 0,
+      fsrsDifficulty: 0,
+      fsrsElapsedDays: 0,
+      fsrsScheduledDays: 0,
+      fsrsReps: 0,
+      fsrsLapses: 0,
+      fsrsLastReview: undefined
     };
   });
 }

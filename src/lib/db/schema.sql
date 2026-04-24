@@ -16,6 +16,7 @@ create table if not exists learner_profiles (
   level text not null check (level in ('A1', 'A2', 'B1', 'B2')),
   daily_minutes integer not null check (daily_minutes between 5 and 120),
   focus text not null,
+  desired_retention numeric(4,2) not null default 0.90 check (desired_retention between 0.75 and 0.97),
   created_at timestamptz not null default timezone('utc', now()),
   updated_at timestamptz not null default timezone('utc', now())
 );
@@ -77,6 +78,14 @@ create table if not exists review_items (
   last_outcome text not null default 'unseen' check (last_outcome in ('unseen', 'again', 'hard', 'good', 'easy')),
   last_confidence numeric(4,2),
   needs_reinforcement boolean not null default false,
+  fsrs_state text not null default 'New' check (fsrs_state in ('New', 'Learning', 'Review', 'Relearning')),
+  fsrs_stability numeric(10,4) not null default 0,
+  fsrs_difficulty numeric(10,4) not null default 0,
+  fsrs_elapsed_days integer not null default 0,
+  fsrs_scheduled_days integer not null default 0,
+  fsrs_reps integer not null default 0,
+  fsrs_lapses integer not null default 0,
+  fsrs_last_review timestamptz,
   created_at timestamptz not null default timezone('utc', now()),
   updated_at timestamptz not null default timezone('utc', now()),
   unique (session_id, review_item_id)
@@ -105,7 +114,15 @@ create table if not exists review_logs (
   skill_dimension text,
   goal_id text,
   domain text,
-  outcome text check (outcome in ('correct', 'incorrect'))
+  outcome text check (outcome in ('correct', 'incorrect')),
+  fsrs_rating integer check (fsrs_rating between 1 and 4),
+  fsrs_state_before text check (fsrs_state_before in ('New', 'Learning', 'Review', 'Relearning')),
+  fsrs_state_after text check (fsrs_state_after in ('New', 'Learning', 'Review', 'Relearning')),
+  fsrs_stability_before numeric(10,4),
+  fsrs_stability_after numeric(10,4),
+  fsrs_difficulty_before numeric(10,4),
+  fsrs_difficulty_after numeric(10,4),
+  scheduled_days_after integer
 );
 
 create index if not exists review_logs_session_reviewed_idx

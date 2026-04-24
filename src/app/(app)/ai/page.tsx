@@ -9,8 +9,13 @@ import { getAiBusinessSnapshot, getAiUsageSummary, readState } from "@/lib/store
 
 export const dynamic = "force-dynamic";
 
-export default async function AiLearningPage() {
+export default async function AiLearningPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ progressMode?: string; replaceFromDayNumber?: string }>;
+}) {
   const [locale, user, sessionId] = await Promise.all([getLocale(), getCurrentUser(), getSessionIdFromHeaders()]);
+  const params = await searchParams;
   const [state, usageSummary, businessSnapshot] = await Promise.all([
     readState(sessionId),
     getAiUsageSummary(sessionId),
@@ -38,6 +43,8 @@ export default async function AiLearningPage() {
           activeGoal={activeGoal}
           initialPlans={state.generatedPlans.filter((plan) => plan.status === "active")}
           locale={locale}
+          progressMode={params.progressMode === "replace-fixed" ? "replace-fixed" : params.progressMode === "append" ? "append" : undefined}
+          replaceFromDayNumber={params.replaceFromDayNumber ? Number(params.replaceFromDayNumber) : undefined}
           usageSummary={usageSummary}
         />
         <AdSlot childMode={state.learningSources.some((source) => source.childMode)} locale={locale} />

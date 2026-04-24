@@ -34,6 +34,10 @@ test("reviews submit route updates performance cookie from review result", async
 
   const response = await POST(request);
   assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.ok, true);
+  assert.equal(body.schedule.state, "Review");
+  assert.ok(body.schedule.scheduledDays > 0);
 
   const setCookie = response.headers.get("set-cookie");
   assert.ok(setCookie);

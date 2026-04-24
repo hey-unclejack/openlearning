@@ -7,7 +7,8 @@ const defaultProfile: LearnerProfile = {
   nativeLanguage: "zh-TW",
   level: "A2",
   dailyMinutes: 15,
-  focus: "travel"
+  focus: "travel",
+  desiredRetention: 0.9
 };
 
 export function createInitialState(profile: LearnerProfile = defaultProfile): AppState {

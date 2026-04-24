@@ -2,11 +2,14 @@ import { buildCourseState, buildCourseTrack, buildReviewItemsForLesson } from "@
 import { normalizeAiSettings } from "@/lib/ai/settings";
 import { createInitialState } from "@/lib/data/seed";
 import {
+  canonicalSubjectForDomain,
   legacyLearningTypeForSkill,
+  getActiveLearningGoal,
   normalizeLearnerProfile,
   normalizeLearningDomain,
   normalizeSkillDimension,
 } from "@/lib/learning-goals";
+import { canManageCoursePlan, getSkippedFixedLessonIds } from "@/lib/progress-planning";
 import {
   DEFAULT_LEARNER_ID,
   assignGoalToLearner,
@@ -18,7 +21,13 @@ import {
   normalizeLearnerSpaces,
 } from "@/lib/learner-spaces";
 import { recordLearningPerformance } from "@/lib/practice-performance";
-import { updateReviewItem } from "@/lib/srs";
+import {
+  DEFAULT_DESIRED_RETENTION,
+  estimateRetrievability,
+  initializeReviewItemFsrs,
+  reviewGradeToFsrsRating,
+  updateReviewItem,
+} from "@/lib/srs";
 import { getSupabaseAdminClient } from "@/lib/supabase";
 import { hashSupervisorPin, verifySupervisorPinHash } from "@/lib/supervisor-pin";
 import {
@@ -40,6 +49,7 @@ import {
   LearningType,
   LearningGoal,
   LearningDomain,
+  FsrsCardState,
   LearnerSpace,
   SkillDimension,
   NativeLanguage,
@@ -72,6 +82,7 @@ type ProfileRow = {
   focus: string;
   active_goal_id?: string | null;
   goals?: LearningGoal[] | null;
+  desired_retention?: number | null;
 };
 
 type ReviewItemRow = {
@@ -97,6 +108,14 @@ type ReviewItemRow = {
   last_outcome?: ReviewGrade | "unseen" | null;
   last_confidence?: number | null;
   needs_reinforcement?: boolean | null;
+  fsrs_state?: FsrsCardState | null;
+  fsrs_stability?: number | null;
+  fsrs_difficulty?: number | null;
+  fsrs_elapsed_days?: number | null;
+  fsrs_scheduled_days?: number | null;
+  fsrs_reps?: number | null;
+  fsrs_lapses?: number | null;
+  fsrs_last_review?: string | null;
 };
 
 type ReviewLogRow = {
@@ -115,6 +134,14 @@ type ReviewLogRow = {
   skill_dimension?: SkillDimension | null;
   learning_type?: LearningType | null;
   outcome?: "correct" | "incorrect" | null;
+  fsrs_rating?: number | null;
+  fsrs_state_before?: FsrsCardState | null;
+  fsrs_state_after?: FsrsCardState | null;
+  fsrs_stability_before?: number | null;
+  fsrs_stability_after?: number | null;
+  fsrs_difficulty_before?: number | null;
+  fsrs_difficulty_after?: number | null;
+  scheduled_days_after?: number | null;
 };
 
 type LearningSourceRow = {
@@ -383,6 +410,7 @@ function profileToRow(sessionId: string, state: AppState): ProfileRow {
     focus: profile.focus,
     active_goal_id: profile.activeGoalId,
     goals: profile.goals,
+    desired_retention: profile.desiredRetention ?? DEFAULT_DESIRED_RETENTION,
   };
 }
 
@@ -413,6 +441,14 @@ function reviewItemFromRow(row: ReviewItemRow): ReviewItem {
     lastOutcome: row.last_outcome ?? "unseen",
     lastConfidence: row.last_confidence ?? undefined,
     needsReinforcement: row.needs_reinforcement ?? false,
+    fsrsState: row.fsrs_state ?? undefined,
+    fsrsStability: row.fsrs_stability ?? undefined,
+    fsrsDifficulty: row.fsrs_difficulty ?? undefined,
+    fsrsElapsedDays: row.fsrs_elapsed_days ?? undefined,
+    fsrsScheduledDays: row.fsrs_scheduled_days ?? undefined,
+    fsrsReps: row.fsrs_reps ?? undefined,
+    fsrsLapses: row.fsrs_lapses ?? undefined,
+    fsrsLastReview: row.fsrs_last_review ?? undefined,
   };
 }
 
@@ -441,6 +477,14 @@ function reviewItemToRow(sessionId: string, item: ReviewItem) {
     last_outcome: item.lastOutcome ?? "unseen",
     last_confidence: item.lastConfidence ?? null,
     needs_reinforcement: item.needsReinforcement ?? false,
+    fsrs_state: item.fsrsState ?? "New",
+    fsrs_stability: item.fsrsStability ?? 0,
+    fsrs_difficulty: item.fsrsDifficulty ?? 0,
+    fsrs_elapsed_days: item.fsrsElapsedDays ?? 0,
+    fsrs_scheduled_days: item.fsrsScheduledDays ?? item.intervalDays,
+    fsrs_reps: item.fsrsReps ?? item.repetitionCount,
+    fsrs_lapses: item.fsrsLapses ?? item.lapseCount,
+    fsrs_last_review: item.fsrsLastReview ?? null,
   };
 }
 
@@ -464,6 +508,14 @@ function reviewLogFromRow(row: ReviewLogRow): ReviewLog {
     skillDimension,
     learningType: row.learning_type ?? undefined,
     outcome: row.outcome ?? undefined,
+    fsrsRating: row.fsrs_rating ?? undefined,
+    fsrsStateBefore: row.fsrs_state_before ?? undefined,
+    fsrsStateAfter: row.fsrs_state_after ?? undefined,
+    fsrsStabilityBefore: row.fsrs_stability_before ?? undefined,
+    fsrsStabilityAfter: row.fsrs_stability_after ?? undefined,
+    fsrsDifficultyBefore: row.fsrs_difficulty_before ?? undefined,
+    fsrsDifficultyAfter: row.fsrs_difficulty_after ?? undefined,
+    scheduledDaysAfter: row.scheduled_days_after ?? undefined,
   };
 }
 
@@ -781,6 +833,7 @@ function mapSupabaseState(
       level: profile.level as ProficiencyLevel,
       dailyMinutes: profile.daily_minutes,
       focus: profile.focus as LearningFocus,
+      desiredRetention: profile.desired_retention ?? DEFAULT_DESIRED_RETENTION,
     }),
   });
 
@@ -939,6 +992,11 @@ function sortReviewPriority(a: ReviewItem, b: ReviewItem) {
     return overdueDelta;
   }
 
+  const retrievabilityDelta = estimateRetrievability(a) - estimateRetrievability(b);
+  if (Math.abs(retrievabilityDelta) >= 0.01) {
+    return retrievabilityDelta;
+  }
+
   const lapseDelta = b.lapseCount - a.lapseCount;
   if (lapseDelta !== 0) {
     return lapseDelta;
@@ -978,7 +1036,14 @@ function getScopedReviewLogs(state: AppState) {
   return state.reviewLogs.filter((log) => itemMatchesScope(log, scope));
 }
 
-function buildReviewLog(item: ReviewItem, grade: ReviewGrade, reviewedAt: Date, sessionType: ReviewSessionType, options: ReviewSubmissionOptions): ReviewLog {
+function buildReviewLog(
+  previousItem: ReviewItem,
+  item: ReviewItem,
+  grade: ReviewGrade,
+  reviewedAt: Date,
+  sessionType: ReviewSessionType,
+  options: ReviewSubmissionOptions,
+): ReviewLog {
   return {
     itemId: item.id,
     grade,
@@ -995,14 +1060,29 @@ function buildReviewLog(item: ReviewItem, grade: ReviewGrade, reviewedAt: Date, 
     skillDimension: item.skillDimension,
     learningType: item.learningType,
     outcome: isCorrectGrade(grade) ? "correct" : "incorrect",
+    fsrsRating: reviewGradeToFsrsRating(grade),
+    fsrsStateBefore: previousItem.fsrsState ?? "New",
+    fsrsStateAfter: item.fsrsState,
+    fsrsStabilityBefore: previousItem.fsrsStability ?? 0,
+    fsrsStabilityAfter: item.fsrsStability,
+    fsrsDifficultyBefore: previousItem.fsrsDifficulty ?? 0,
+    fsrsDifficultyAfter: item.fsrsDifficulty,
+    scheduledDaysAfter: item.fsrsScheduledDays ?? item.intervalDays,
   };
 }
 
-function applyReviewUpdate(item: ReviewItem, grade: ReviewGrade, reviewedAt: Date, sessionType: ReviewSessionType, options: ReviewSubmissionOptions) {
+function applyReviewUpdate(
+  item: ReviewItem,
+  grade: ReviewGrade,
+  reviewedAt: Date,
+  sessionType: ReviewSessionType,
+  options: ReviewSubmissionOptions,
+  desiredRetention = DEFAULT_DESIRED_RETENTION,
+) {
   const confidence = options.confidence ?? scoreConfidence(grade);
 
   if (sessionType === "formal" || sessionType === "warmup") {
-    const updated = updateReviewItem(item, grade, reviewedAt);
+    const updated = updateReviewItem(item, grade, reviewedAt, desiredRetention);
     return {
       ...updated,
       lastOutcome: grade,
@@ -1024,15 +1104,22 @@ function getReviewBucketsFromState(state: AppState) {
   const budget = getTodayBudget(state.profile?.dailyMinutes ?? 15);
   const scopedItems = getScopedReviewItems(state);
   const dueItems = scopedItems.filter((item) => new Date(item.dueDate).getTime() <= Date.now());
+  const lowRetrievabilityItems = scopedItems.filter((item) => estimateRetrievability(item) <= 0.72);
+  const mustCandidates = [...new Map([...dueItems, ...lowRetrievabilityItems].map((item) => [item.id, item])).values()];
   const must = dueItems
-    .filter((item) => getOverdueDays(item) >= 1 || item.lapseCount >= 2 || item.needsReinforcement)
+    .filter((item) => getOverdueDays(item) >= 1 || estimateRetrievability(item) <= 0.82 || item.lapseCount >= 2 || item.needsReinforcement)
     .sort(sortReviewPriority);
+  lowRetrievabilityItems.forEach((item) => {
+    if (!must.some((mustItem) => mustItem.id === item.id)) {
+      must.push(item);
+    }
+  });
   const should = dueItems
     .filter((item) => !must.some((mustItem) => mustItem.id === item.id))
     .sort(sortReviewPriority);
 
   const canCandidates = scopedItems
-    .filter((item) => !dueItems.some((dueItem) => dueItem.id === item.id))
+    .filter((item) => !mustCandidates.some((mustItem) => mustItem.id === item.id))
     .filter((item) => item.needsReinforcement || item.lapseCount > 0 || item.lastOutcome === "again" || item.lastOutcome === "hard")
     .sort(sortReviewPriority)
     .slice(0, 4);
@@ -1070,6 +1157,26 @@ function getReviewBucketsFromState(state: AppState) {
     budget,
     reviewBudgetSeconds,
     picked,
+    memoryHealth: deriveRetentionScore(state),
+    estimatedMinutes: Math.max(0, Math.ceil(consumedSeconds / 60)),
+    reasonCodes: picked.reduce<Record<string, string[]>>((acc, item) => {
+      acc[item.id] = [
+        ...(new Date(item.dueDate).getTime() <= Date.now() ? ["due"] : []),
+        ...(getOverdueDays(item) >= 1 ? ["overdue"] : []),
+        ...(estimateRetrievability(item) <= 0.82 ? ["low_retrievability"] : []),
+        ...(item.needsReinforcement ? ["reinforcement"] : []),
+        ...(item.importance === "core" ? ["core"] : []),
+      ];
+      return acc;
+    }, {}),
+    nextBestAction:
+      must.length > 0 || should.length > 0
+        ? "review"
+        : scopedItems.length === 0
+          ? "lesson"
+          : canCandidates.length > 0
+            ? "reinforce"
+            : "lesson",
     must: {
       items: must,
       estimatedMinutes: Math.max(1, Math.ceil(mustSeconds / 60)),
@@ -1287,12 +1394,12 @@ export async function completeLesson(sessionId: string, lessonId: string) {
   const unitCompleted = currentUnitIndex >= 0 && currentUnitIndex === currentUnitLessons.length - 1;
 
   const activeLearnerId = state.activeLearnerId ?? DEFAULT_LEARNER_ID;
-  const newReviewItems = buildReviewItemsForLesson(courseLesson).map((item) => ({
-    ...item,
-    learnerId: activeLearnerId,
-  })).filter(
-    (item) => !state.reviewItems.some((existing) => existing.id === item.id),
-  );
+  const newReviewItems = buildReviewItemsForLesson(courseLesson)
+    .map((item) => initializeReviewItemFsrs({
+      ...item,
+      learnerId: activeLearnerId,
+    }))
+    .filter((item) => !state.reviewItems.some((existing) => existing.id === item.id));
   const mergedReviewItems = [...state.reviewItems, ...newReviewItems];
   const nextDay = Math.min(state.plan.length, state.currentDay + 1);
   const nextState = rebuildState(state, {
@@ -1381,12 +1488,12 @@ export async function completeGeneratedLesson(sessionId: string, lessonId: strin
   }
 
   const courseLesson = generatedDayToCourseLesson(plan, day);
-  const newReviewItems = buildReviewItemsForLesson(courseLesson).map((item) => ({
-    ...item,
-    learnerId: plan.learnerId ?? state.activeLearnerId ?? DEFAULT_LEARNER_ID,
-  })).filter(
-    (item) => !state.reviewItems.some((existing) => existing.id === item.id),
-  );
+  const newReviewItems = buildReviewItemsForLesson(courseLesson)
+    .map((item) => initializeReviewItemFsrs({
+      ...item,
+      learnerId: plan.learnerId ?? state.activeLearnerId ?? DEFAULT_LEARNER_ID,
+    }))
+    .filter((item) => !state.reviewItems.some((existing) => existing.id === item.id));
   const completedAt = new Date().toISOString();
   const generatedPlans = state.generatedPlans.map((item) =>
     item.id === plan.id
@@ -1588,6 +1695,415 @@ export async function deleteGeneratedLearningPlan(sessionId: string, planId: str
   }
 
   return true;
+}
+
+function buildManualGeneratedDay(params: {
+  planId: string;
+  dayNumber: number;
+  title: string;
+  objective: string;
+  domain: LearningDomain;
+}) {
+  const lessonId = makeId("manual-lesson", `${params.planId}-${params.dayNumber}-${params.title}`);
+  const reviewSeedId = makeId("manual-review", `${lessonId}-core`);
+  const normalizedTitle = params.title.trim() || "Untitled lesson";
+  const normalizedObjective = params.objective.trim() || normalizedTitle;
+
+  return {
+    id: makeId("manual-day", `${lessonId}-${params.dayNumber}`),
+    lessonId,
+    dayNumber: params.dayNumber,
+    title: normalizedTitle,
+    objective: normalizedObjective,
+    vocabulary: [],
+    chunks: [normalizedObjective],
+    dialogue: [],
+    asset: {
+      id: lessonId,
+      unitId: `generated-${params.planId}`,
+      intro: normalizedObjective,
+      coachingNote: "先回想你已經知道的內容，再完成這堂短課。",
+      personalizationNote: "",
+      practice: [
+        {
+          id: makeId("manual-practice", `${lessonId}-recall`),
+          learningType: "recall",
+          skillDimension: "recall",
+          prompt: `用自己的話說明：${normalizedObjective}`,
+          answer: normalizedObjective,
+          hint: "先抓核心概念，再補例子。",
+        },
+      ],
+      reviewSeeds: [
+        {
+          id: reviewSeedId,
+          front: normalizedTitle,
+          back: normalizedObjective,
+          hint: "回想這堂課的核心目標。",
+          tags: [params.domain, "manual"],
+        },
+      ],
+    },
+  } satisfies GeneratedPlanDay;
+}
+
+function assertCanManageProgressPlan(state: AppState) {
+  if (!canManageCoursePlan(state)) {
+    throw new Error("FORBIDDEN_PROGRESS_PLAN");
+  }
+}
+
+function assertGeneratedDayEditable(plan: GeneratedLearningPlan | undefined, lessonId: string) {
+  const day = plan?.days.find((item) => item.lessonId === lessonId);
+
+  if (!plan || !day) {
+    throw new Error("PROGRESS_LESSON_NOT_FOUND");
+  }
+
+  if (day.completedAt) {
+    throw new Error("PROGRESS_LESSON_COMPLETED");
+  }
+
+  return day;
+}
+
+function updateActiveGoalMetadata(state: AppState, metadata: Record<string, string | number | boolean>) {
+  const profile = normalizeLearnerProfile(state.profile ?? createInitialState().profile!);
+  const activeGoal = getActiveLearningGoal(profile);
+  const nextProfile = normalizeLearnerProfile({
+    ...profile,
+    goals: profile.goals?.map((goal) =>
+      goal.id === activeGoal.id
+        ? {
+            ...goal,
+            metadata: {
+              ...goal.metadata,
+              ...metadata,
+            },
+            updatedAt: new Date().toISOString(),
+          }
+        : goal,
+    ),
+  });
+  const activeLearnerId = state.activeLearnerId ?? DEFAULT_LEARNER_ID;
+
+  return {
+    profile: nextProfile,
+    learners: (state.learners ?? []).map((learner) =>
+      learner.id === activeLearnerId ? { ...learner, profile: nextProfile, updatedAt: new Date().toISOString() } : learner,
+    ),
+  };
+}
+
+export async function createProgressGeneratedPlan(sessionId: string, params: {
+  title: string;
+  objective: string;
+  mode?: "append" | "replace-fixed";
+  replaceFromDayNumber?: number;
+}) {
+  const client = getSupabaseAdminClient();
+  const state = await readState(sessionId);
+  assertCanManageProgressPlan(state);
+
+  const activeGoal = state.profile ? getActiveLearningGoal(state.profile) : undefined;
+  const activeLearner = getActiveLearner(state);
+  const domain = activeGoal?.domain ?? normalizeLearningDomain(activeGoal?.subject);
+  const subject = canonicalSubjectForDomain(domain);
+  const now = new Date().toISOString();
+  const sourceId = makeId("manual-source", params.title);
+  const planId = makeId("manual-plan", params.title);
+  const source: LearningSource = {
+    id: sourceId,
+    type: "topic",
+    learnerId: activeLearner?.id ?? DEFAULT_LEARNER_ID,
+    goalId: activeGoal?.id,
+    domain,
+    subject,
+    title: params.title.trim() || "Manual lesson",
+    rawText: params.objective.trim() || params.title.trim() || "Manual lesson",
+    metadata: { origin: "progress" },
+    userOwnsRights: true,
+    childMode: state.accountMode === "child",
+    createdAt: now,
+  };
+  const day = buildManualGeneratedDay({
+    planId,
+    dayNumber: params.mode === "append" && state.plan.length > 0 ? state.plan.length + 1 : params.replaceFromDayNumber ?? 1,
+    title: params.title,
+    objective: params.objective,
+    domain,
+  });
+  const plan: GeneratedLearningPlan = {
+    id: planId,
+    sourceId,
+    learnerId: activeLearner?.id ?? DEFAULT_LEARNER_ID,
+    goalId: activeGoal?.id,
+    domain,
+    subject,
+    providerMode: "official",
+    model: "manual",
+    level: activeGoal?.level ?? state.profile?.level ?? "A2",
+    focus: state.profile?.focus ?? "daily",
+    dailyMinutes: activeGoal?.dailyMinutes ?? state.profile?.dailyMinutes ?? 15,
+    status: "active",
+    days: [day],
+    qualityWarnings: [
+      "manual",
+      ...(params.mode === "replace-fixed" && params.replaceFromDayNumber
+        ? [`replaces-fixed-from-day:${params.replaceFromDayNumber}`]
+        : []),
+    ],
+    costEstimateUsd: 0,
+    createdAt: now,
+  };
+  const nextState = rebuildState(state, {
+    learningSources: [source, ...state.learningSources.filter((item) => item.id !== source.id)].slice(0, 30),
+    generatedPlans: [plan, ...state.generatedPlans.filter((item) => item.id !== plan.id)].slice(0, 20),
+  });
+
+  replaceLocalState(sessionId, nextState);
+
+  if (client) {
+    try {
+      await ensureSupabaseState(sessionId);
+      await Promise.all([
+        client.from("learning_sources").upsert(learningSourceToRow(sessionId, source), { onConflict: "session_id,source_id" }),
+        client.from("generated_plans").upsert(generatedPlanToRow(sessionId, plan), { onConflict: "session_id,generated_plan_id" }),
+      ]);
+    } catch {
+      // Local fallback remains authoritative when optional progress tables are unavailable.
+    }
+  }
+
+  return plan;
+}
+
+export async function appendProgressGeneratedLesson(sessionId: string, params: {
+  planId: string;
+  title: string;
+  objective: string;
+}) {
+  const state = await readState(sessionId);
+  assertCanManageProgressPlan(state);
+  const plan = state.generatedPlans.find((item) => item.id === params.planId);
+
+  if (!plan || (plan.status !== "active" && plan.status !== "completed")) {
+    throw new Error("PROGRESS_PLAN_NOT_FOUND");
+  }
+
+  const day = buildManualGeneratedDay({
+    planId: plan.id,
+    dayNumber: Math.max(0, ...plan.days.map((item) => item.dayNumber)) + 1,
+    title: params.title,
+    objective: params.objective,
+    domain: plan.domain,
+  });
+  const generatedPlans = state.generatedPlans.map((item) =>
+    item.id === params.planId
+      ? {
+          ...item,
+          status: "active" as const,
+          days: [...item.days, day],
+        }
+      : item,
+  );
+  const nextState = rebuildState(state, { generatedPlans });
+
+  replaceLocalState(sessionId, nextState);
+  await persistGeneratedPlans(sessionId, generatedPlans.filter((item) => item.id === params.planId));
+
+  return generatedPlans.find((item) => item.id === params.planId)!;
+}
+
+export async function updateProgressGeneratedLesson(sessionId: string, params: {
+  planId: string;
+  lessonId: string;
+  title: string;
+  objective: string;
+}) {
+  const state = await readState(sessionId);
+  assertCanManageProgressPlan(state);
+  const plan = state.generatedPlans.find((item) => item.id === params.planId);
+  assertGeneratedDayEditable(plan, params.lessonId);
+
+  const generatedPlans = state.generatedPlans.map((item) =>
+    item.id === params.planId
+      ? {
+          ...item,
+          days: item.days.map((day) =>
+            day.lessonId === params.lessonId
+              ? {
+                  ...day,
+                  title: params.title.trim() || day.title,
+                  objective: params.objective.trim() || day.objective,
+                  chunks: params.objective.trim() ? [params.objective.trim()] : day.chunks,
+                  asset: {
+                    ...day.asset,
+                    intro: params.objective.trim() || day.asset.intro,
+                    reviewSeeds: day.asset.reviewSeeds.map((seed, index) =>
+                      index === 0
+                        ? {
+                            ...seed,
+                            front: params.title.trim() || seed.front,
+                            back: params.objective.trim() || seed.back,
+                          }
+                        : seed,
+                    ),
+                  },
+                }
+              : day,
+          ),
+        }
+      : item,
+  );
+  const nextState = rebuildState(state, { generatedPlans });
+
+  replaceLocalState(sessionId, nextState);
+  await persistGeneratedPlans(sessionId, generatedPlans.filter((item) => item.id === params.planId));
+
+  return generatedPlans.find((item) => item.id === params.planId)!;
+}
+
+export async function deleteProgressGeneratedLesson(sessionId: string, params: { planId: string; lessonId: string }) {
+  const state = await readState(sessionId);
+  assertCanManageProgressPlan(state);
+  const plan = state.generatedPlans.find((item) => item.id === params.planId);
+  assertGeneratedDayEditable(plan, params.lessonId);
+
+  if (plan!.days.length === 1) {
+    return deleteGeneratedLearningPlan(sessionId, params.planId);
+  }
+
+  const lessonIds = new Set([params.lessonId]);
+  const generatedPlans = state.generatedPlans.map((item) =>
+    item.id === params.planId
+      ? {
+          ...item,
+          days: item.days
+            .filter((day) => day.lessonId !== params.lessonId)
+            .map((day, index) => ({ ...day, dayNumber: index + 1 })),
+        }
+      : item,
+  );
+  const nextState = rebuildState(state, {
+    generatedPlans,
+    reviewItems: state.reviewItems.filter((item) => !lessonIds.has(item.lessonId)),
+  });
+
+  replaceLocalState(sessionId, nextState);
+  await persistGeneratedPlans(sessionId, generatedPlans.filter((item) => item.id === params.planId));
+
+  return true;
+}
+
+export async function reorderProgressGeneratedLessons(sessionId: string, params: { planId: string; lessonIds: string[] }) {
+  const state = await readState(sessionId);
+  assertCanManageProgressPlan(state);
+  const plan = state.generatedPlans.find((item) => item.id === params.planId);
+
+  if (!plan) {
+    throw new Error("PROGRESS_PLAN_NOT_FOUND");
+  }
+
+  const completed = plan.days.filter((day) => day.completedAt);
+  const upcoming = plan.days.filter((day) => !day.completedAt);
+  const completedIds = new Set(completed.map((day) => day.lessonId));
+
+  if (params.lessonIds.some((lessonId) => completedIds.has(lessonId))) {
+    throw new Error("PROGRESS_LESSON_COMPLETED");
+  }
+
+  const upcomingById = new Map(upcoming.map((day) => [day.lessonId, day]));
+  const orderedUpcoming = params.lessonIds
+    .map((lessonId) => upcomingById.get(lessonId))
+    .filter((day): day is GeneratedPlanDay => Boolean(day));
+  const missingUpcoming = upcoming.filter((day) => !orderedUpcoming.some((item) => item.lessonId === day.lessonId));
+  const days = [...completed, ...orderedUpcoming, ...missingUpcoming].map((day, index) => ({
+    ...day,
+    dayNumber: index + 1,
+  }));
+  const generatedPlans = state.generatedPlans.map((item) => item.id === params.planId ? { ...item, days } : item);
+  const nextState = rebuildState(state, { generatedPlans });
+
+  replaceLocalState(sessionId, nextState);
+  await persistGeneratedPlans(sessionId, generatedPlans.filter((item) => item.id === params.planId));
+
+  return generatedPlans.find((item) => item.id === params.planId)!;
+}
+
+export async function jumpToProgressLesson(sessionId: string, params: { source: "fixed" | "generated"; lessonId: string; planId?: string }) {
+  const state = await readState(sessionId);
+  assertCanManageProgressPlan(state);
+
+  if (params.source === "fixed") {
+    const target = state.plan.find((day) => day.lessonId === params.lessonId);
+
+    if (!target) {
+      throw new Error("PROGRESS_LESSON_NOT_FOUND");
+    }
+
+    if (target.dayNumber <= state.currentDay) {
+      throw new Error("PROGRESS_LESSON_COMPLETED");
+    }
+
+    const skippedIds = getSkippedFixedLessonIds(state);
+    state.plan
+      .filter((day) => day.dayNumber >= state.currentDay && day.dayNumber < target.dayNumber)
+      .forEach((day) => skippedIds.add(day.lessonId));
+    const profileUpdate = updateActiveGoalMetadata(state, {
+      skippedFixedLessonIds: [...skippedIds].join(","),
+    });
+    const nextState = rebuildState(state, {
+      ...profileUpdate,
+      currentDay: target.dayNumber,
+    });
+
+    replaceLocalState(sessionId, nextState);
+    await persistProfileState(sessionId, nextState);
+
+    return {
+      href: `/study/lesson/${target.lessonId}`,
+      skippedCount: Math.max(0, target.dayNumber - state.currentDay),
+    };
+  }
+
+  const plan = state.generatedPlans.find((item) => item.id === params.planId);
+  const target = plan?.days.find((day) => day.lessonId === params.lessonId);
+
+  if (!plan || !target) {
+    throw new Error("PROGRESS_LESSON_NOT_FOUND");
+  }
+
+  if (target.completedAt || target.skippedAt) {
+    throw new Error("PROGRESS_LESSON_COMPLETED");
+  }
+
+  const skippedAt = new Date().toISOString();
+  let skippedCount = 0;
+  const generatedPlans = state.generatedPlans.map((item) =>
+    item.id === plan.id
+      ? {
+          ...item,
+          days: item.days.map((day) => {
+            if (day.dayNumber < target.dayNumber && !day.completedAt && !day.skippedAt) {
+              skippedCount += 1;
+              return { ...day, skippedAt };
+            }
+
+            return day;
+          }),
+        }
+      : item,
+  );
+  const nextState = rebuildState(state, { generatedPlans });
+
+  replaceLocalState(sessionId, nextState);
+  await persistGeneratedPlans(sessionId, generatedPlans.filter((item) => item.id === plan.id));
+
+  return {
+    href: `/study/generated/${plan.id}/${target.lessonId}`,
+    skippedCount,
+  };
 }
 
 export async function getGeneratedLearningPlan(sessionId: string, planId: string) {
@@ -2163,8 +2679,11 @@ export async function getExtraReviewItems(
   lessonId?: string,
 ) {
   const state = await readState(sessionId);
+  const skippedFixedLessonIds = getSkippedFixedLessonIds(state);
   const completedLessonIds = new Set(
-    state.plan.filter((item) => item.dayNumber < state.currentDay).map((item) => item.lessonId),
+    state.plan
+      .filter((item) => item.dayNumber < state.currentDay && !skippedFixedLessonIds.has(item.lessonId))
+      .map((item) => item.lessonId),
   );
 
   const base = getScopedReviewItems(state).filter((item) => completedLessonIds.has(item.lessonId));
@@ -2176,7 +2695,7 @@ export async function getExtraReviewItems(
 
   if (scope === "recent") {
     const recentLessonIds = state.plan
-      .filter((item) => item.dayNumber < state.currentDay)
+      .filter((item) => item.dayNumber < state.currentDay && !skippedFixedLessonIds.has(item.lessonId))
       .slice(Math.max(0, state.currentDay - 3), state.currentDay)
       .map((item) => item.lessonId);
     return sorted.filter((item) => recentLessonIds.includes(item.lessonId)).slice(0, 8);
@@ -2192,6 +2711,8 @@ export async function getExtraReviewItems(
 export async function reviewItem(sessionId: string, itemId: string, grade: ReviewGrade, options: ReviewSubmissionOptions = {}) {
   const sessionType = options.sessionType ?? "formal";
   const client = getSupabaseAdminClient();
+  const stateSnapshot = await readState(sessionId);
+  const desiredRetention = stateSnapshot.profile?.desiredRetention ?? DEFAULT_DESIRED_RETENTION;
 
   const persistPerformance = async (item: ReviewItem) => {
     await recordLearningPerformance({
@@ -2210,9 +2731,10 @@ export async function reviewItem(sessionId: string, itemId: string, grade: Revie
     }
 
     const reviewedAt = new Date();
-    const updated = applyReviewUpdate(state.reviewItems[index], grade, reviewedAt, sessionType, options);
+    const previous = state.reviewItems[index];
+    const updated = applyReviewUpdate(previous, grade, reviewedAt, sessionType, options, desiredRetention);
     state.reviewItems[index] = updated;
-    state.reviewLogs.unshift(buildReviewLog(updated, grade, reviewedAt, sessionType, options));
+    state.reviewLogs.unshift(buildReviewLog(previous, updated, grade, reviewedAt, sessionType, options));
     await persistPerformance(updated);
     return updated;
   }
@@ -2233,7 +2755,7 @@ export async function reviewItem(sessionId: string, itemId: string, grade: Revie
 
     const currentItem = reviewItemFromRow(data as unknown as ReviewItemRow);
     const reviewedAt = new Date();
-    const updated = applyReviewUpdate(currentItem, grade, reviewedAt, sessionType, options);
+    const updated = applyReviewUpdate(currentItem, grade, reviewedAt, sessionType, options, desiredRetention);
 
     await client
       .from("review_items")
@@ -2247,6 +2769,14 @@ export async function reviewItem(sessionId: string, itemId: string, grade: Revie
         last_outcome: updated.lastOutcome ?? "unseen",
         last_confidence: updated.lastConfidence ?? null,
         needs_reinforcement: updated.needsReinforcement ?? false,
+        fsrs_state: updated.fsrsState ?? "New",
+        fsrs_stability: updated.fsrsStability ?? 0,
+        fsrs_difficulty: updated.fsrsDifficulty ?? 0,
+        fsrs_elapsed_days: updated.fsrsElapsedDays ?? 0,
+        fsrs_scheduled_days: updated.fsrsScheduledDays ?? updated.intervalDays,
+        fsrs_reps: updated.fsrsReps ?? updated.repetitionCount,
+        fsrs_lapses: updated.fsrsLapses ?? updated.lapseCount,
+        fsrs_last_review: updated.fsrsLastReview ?? null,
       })
       .eq("session_id", sessionId)
       .eq("review_item_id", itemId);
@@ -2268,6 +2798,14 @@ export async function reviewItem(sessionId: string, itemId: string, grade: Revie
       skill_dimension: updated.skillDimension,
       learning_type: updated.learningType,
       outcome: isCorrectGrade(grade) ? "correct" : "incorrect",
+      fsrs_rating: reviewGradeToFsrsRating(grade),
+      fsrs_state_before: currentItem.fsrsState ?? "New",
+      fsrs_state_after: updated.fsrsState ?? "New",
+      fsrs_stability_before: currentItem.fsrsStability ?? 0,
+      fsrs_stability_after: updated.fsrsStability ?? 0,
+      fsrs_difficulty_before: currentItem.fsrsDifficulty ?? 0,
+      fsrs_difficulty_after: updated.fsrsDifficulty ?? 0,
+      scheduled_days_after: updated.fsrsScheduledDays ?? updated.intervalDays,
     });
 
     const state = getLocalState(sessionId);
@@ -2275,7 +2813,7 @@ export async function reviewItem(sessionId: string, itemId: string, grade: Revie
     if (reviewIndex !== -1) {
       state.reviewItems[reviewIndex] = updated;
     }
-    state.reviewLogs.unshift(buildReviewLog(updated, grade, reviewedAt, sessionType, options));
+    state.reviewLogs.unshift(buildReviewLog(currentItem, updated, grade, reviewedAt, sessionType, options));
 
     await persistPerformance(updated);
     return updated;
@@ -2288,9 +2826,10 @@ export async function reviewItem(sessionId: string, itemId: string, grade: Revie
     }
 
     const reviewedAt = new Date();
-    const updated = applyReviewUpdate(state.reviewItems[index], grade, reviewedAt, sessionType, options);
+    const previous = state.reviewItems[index];
+    const updated = applyReviewUpdate(previous, grade, reviewedAt, sessionType, options, desiredRetention);
     state.reviewItems[index] = updated;
-    state.reviewLogs.unshift(buildReviewLog(updated, grade, reviewedAt, sessionType, options));
+    state.reviewLogs.unshift(buildReviewLog(previous, updated, grade, reviewedAt, sessionType, options));
     await persistPerformance(updated);
     return updated;
   }
@@ -2299,6 +2838,7 @@ export async function reviewItem(sessionId: string, itemId: string, grade: Revie
 export function deriveStats(state: AppState) {
   const scopedItems = getScopedReviewItems(state);
   const scopedLogs = getScopedReviewLogs(state);
+  const skippedFixedLessonIds = getSkippedFixedLessonIds(state);
   const dueCount = scopedItems.filter((item) => new Date(item.dueDate).getTime() <= Date.now()).length;
   const masteredCount = scopedItems.filter((item) => item.intervalDays >= 4).length;
   const weakItems = [...scopedItems]
@@ -2320,7 +2860,10 @@ export function deriveStats(state: AppState) {
     masteredCount,
     weakItems,
     streak: state.streak,
-    completedDays: Math.max(0, state.currentDay - 1),
+    completedDays: Math.max(
+      0,
+      state.plan.filter((item) => item.dayNumber < state.currentDay && !skippedFixedLessonIds.has(item.lessonId)).length,
+    ),
     planDays: state.plan.length,
     totalReviews: scopedLogs.length,
     formalReviews,
@@ -2336,19 +2879,12 @@ export function deriveRetentionScore(state: AppState) {
     return 0;
   }
 
-  const total = scopedItems.reduce(
-    (sum, item) =>
-      sum +
-      Math.min(
-        100,
-        35 +
-          item.intervalDays * 8 +
-          item.repetitionCount * 6 -
-          item.lapseCount * 8 +
-          (item.lastOutcome === "easy" ? 4 : item.lastOutcome === "good" ? 2 : 0),
-      ),
-    0,
-  );
+  const total = scopedItems.reduce((sum, item) => {
+    const retrievability = estimateRetrievability(item);
+    const stabilityBonus = Math.min(10, (item.fsrsStability ?? 0) * 1.5);
+    const lapsePenalty = (item.fsrsLapses ?? item.lapseCount) * 4;
+    return sum + Math.max(0, Math.min(100, retrievability * 100 + stabilityBonus - lapsePenalty));
+  }, 0);
 
   return Math.round(total / scopedItems.length);
 }

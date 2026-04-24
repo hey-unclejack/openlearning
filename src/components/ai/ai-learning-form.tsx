@@ -63,6 +63,8 @@ function copy(locale: AppLocale) {
       ? "官方 AI 由平台額度計費；API key / OAuth 會使用你在 AI 設定頁連接的服務。"
       : "Official AI uses platform quota; API key / OAuth uses the service connected in AI settings.",
     noGoal: isZh ? "尚未設定學習目標；目前會以語言學習預設值生成。" : "No learning goal is set yet; language defaults will be used.",
+    progressAppend: isZh ? "這次產生的課程會加入目前課程計劃。" : "This generated plan will be added to the current course plan.",
+    progressReplace: isZh ? "這次產生的課程會取代未完成的固定課程段落；已完成課程不會被更動。" : "This generated plan will replace the upcoming fixed segment. Completed lessons stay unchanged.",
     titlePlaceholder: isZh
       ? "例如：光合作用、國二一次函數、TOEIC Part 5、產品管理章節"
       : "e.g. photosynthesis, linear functions, TOEIC Part 5, product management chapter",
@@ -147,11 +149,15 @@ export function AiLearningForm({
   locale,
   activeGoal,
   initialPlans,
+  progressMode,
+  replaceFromDayNumber,
   usageSummary
 }: {
   locale: AppLocale;
   activeGoal?: LearningGoal;
   initialPlans: GeneratedLearningPlan[];
+  progressMode?: "append" | "replace-fixed";
+  replaceFromDayNumber?: number;
   usageSummary: {
     dailyOfficialLimit: number;
     officialToday: number;
@@ -200,6 +206,8 @@ export function AiLearningForm({
         childMode,
         dayCount: 3,
         previewOnly: true,
+        progressMode,
+        replaceFromDayNumber,
       }),
     });
     const payload = (await response.json()) as GenerateResponse;
@@ -242,7 +250,17 @@ export function AiLearningForm({
       body: JSON.stringify({
         action: "commit",
         source: preview.source,
-        plan: preview.plan,
+        plan: {
+          ...preview.plan,
+          qualityWarnings: [
+            ...preview.plan.qualityWarnings,
+            ...(progressMode === "replace-fixed" && replaceFromDayNumber
+              ? [`replaces-fixed-from-day:${replaceFromDayNumber}`]
+              : progressMode === "append"
+                ? ["progress-append"]
+                : []),
+          ],
+        },
         usageLog: preview.usageLog,
       }),
     });
@@ -337,6 +355,12 @@ export function AiLearningForm({
             Official free quota: {usageSummary.officialToday} / {usageSummary.dailyOfficialLimit} today · BYOK generations: {usageSummary.byokToday} · Estimated cost today: ${usageSummary.todayCostEstimateUsd.toFixed(4)}
           </p>
         </div>
+        {progressMode ? (
+          <div className="muted-box ai-usage-box">
+            <div className="eyebrow">{locale === "zh-TW" ? "課程安排模式" : "Course planning mode"}</div>
+            <p className="subtle">{progressMode === "replace-fixed" ? text.progressReplace : text.progressAppend}</p>
+          </div>
+        ) : null}
 
         <div className="ai-form-grid">
           <label className="field">

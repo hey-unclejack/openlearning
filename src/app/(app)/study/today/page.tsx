@@ -44,6 +44,13 @@ export default async function TodayPage({
   const completedInUnit = currentIndex >= 0 ? currentIndex : 0;
   const activeDomain = usesFixedCourseTrack ? courseLesson?.domain ?? "language" : activeGoal?.domain ?? "general";
   const weakTypes = getWeakLearningTypes(learningPerformance, activeDomain).slice(0, 2);
+  const reviewDebt = reviewPlan.counts.must + reviewPlan.counts.should;
+  const nextActionCopy =
+    reviewPlan.nextBestAction === "review"
+      ? isZh ? "先穩住記憶，再開新課" : "Stabilize memory before the lesson"
+      : reviewPlan.nextBestAction === "reinforce"
+        ? isZh ? "今日適合補強弱項" : "Today is good for reinforcement"
+        : isZh ? "可以直接推進新課" : "Ready for the next lesson";
   const completedState = completedLessonId ? await readState(sessionId) : null;
   const completedCourseLesson = completedLessonId
     ? completedState?.courseTrack.units.flatMap((courseUnit) => courseUnit.lessons).find((item) => item.id === completedLessonId)
@@ -75,6 +82,23 @@ export default async function TodayPage({
           <div>
             <div className="eyebrow">{copy.todayPage.eyebrow}</div>
             <h1 className="page-title">{copy.todayPage.title}</h1>
+          </div>
+        </div>
+        <div className="today-operating-strip">
+          <div>
+            <div className="eyebrow">{isZh ? "今日任務判斷" : "Today's operating signal"}</div>
+            <h2>{nextActionCopy}</h2>
+            <p className="subtle">
+              {isZh
+                ? `正式複習 ${reviewDebt} 張，預估 ${reviewPlan.estimatedMinutes} 分鐘；記憶健康 ${reviewPlan.memoryHealth}。`
+                : `${reviewDebt} formal reviews, about ${reviewPlan.estimatedMinutes} min; memory health ${reviewPlan.memoryHealth}.`}
+            </p>
+          </div>
+          <div className="today-operating-metrics">
+            <span>{reviewPlan.counts.must}</span>
+            <small>{isZh ? "必做" : "must"}</small>
+            <span>{reviewPlan.counts.should}</span>
+            <small>{isZh ? "建議" : "should"}</small>
           </div>
         </div>
         {completedLesson ? (
@@ -144,7 +168,7 @@ export default async function TodayPage({
             <p className="subtle">{copy.todayPage.targetRule}</p>
             <div className="button-row">
               <Link className="button" href="/study/review">
-                {copy.todayPage.startReview}
+                {reviewDebt > 0 ? copy.todayPage.startReview : (isZh ? "檢查複習佇列" : "Check review queue")}
               </Link>
             </div>
           </div>
@@ -224,7 +248,7 @@ export default async function TodayPage({
               </p>
             </div>
             <div className="button-row">
-              <Link className="button-secondary" href={usesFixedCourseTrack ? `/study/lesson/${planDay.lessonId}` : generatedHref}>
+              <Link className={reviewDebt > 0 ? "button-secondary" : "button"} href={usesFixedCourseTrack ? `/study/lesson/${planDay.lessonId}` : generatedHref}>
                 {usesFixedCourseTrack || generatedPlanDay ? copy.todayPage.openLesson : (isZh ? "前往 AI 導入" : "Open AI intake")}
               </Link>
             </div>

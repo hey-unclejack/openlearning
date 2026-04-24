@@ -276,6 +276,7 @@ export function normalizeLearnerProfile(profile: LearnerProfile): LearnerProfile
     ...profile,
     activeGoalId,
     goals,
+    desiredRetention: profile.desiredRetention ?? 0.9,
   };
 }
 
@@ -302,7 +303,7 @@ export function getNextGeneratedPlanDay(plans: GeneratedLearningPlan[], goal?: L
   const activePlan = getActiveGoalPlans(plans, goal)
     .filter((plan) => plan.status === "active")
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
-  const day = activePlan?.days.find((candidate) => !candidate.completedAt) ?? activePlan?.days[0];
+  const day = activePlan?.days.find((candidate) => !candidate.completedAt && !candidate.skippedAt) ?? activePlan?.days[0];
 
   return activePlan && day ? { plan: activePlan, day } : null;
 }

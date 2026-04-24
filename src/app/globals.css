@@ -1255,6 +1255,62 @@ textarea {
   margin-top: 20px;
 }
 
+.sidebar-mission {
+  display: grid;
+  gap: 14px;
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid rgba(25, 33, 38, 0.08);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.sidebar-mission-label {
+  margin-bottom: 4px;
+  font-family: "Helvetica Neue", Arial, sans-serif;
+  color: var(--muted);
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.sidebar-mission strong {
+  display: block;
+  line-height: 1.25;
+}
+
+.sidebar-mission p {
+  margin: 0;
+  color: var(--muted);
+  font-family: "Helvetica Neue", Arial, sans-serif;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.sidebar-mission-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.sidebar-mission-grid div {
+  display: grid;
+  gap: 2px;
+  padding: 10px;
+  border-radius: 14px;
+  background: rgba(244, 249, 247, 0.8);
+}
+
+.sidebar-mission-grid span {
+  font-size: 1.35rem;
+  font-weight: 800;
+}
+
+.sidebar-mission-grid small {
+  color: var(--muted);
+  font-family: "Helvetica Neue", Arial, sans-serif;
+}
+
 .sidebar a {
   padding: 12px 14px;
   border-radius: 16px;
@@ -1372,6 +1428,42 @@ textarea {
 .today-step-flow {
   display: grid;
   gap: 14px;
+}
+
+.today-operating-strip {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px;
+  padding: 22px;
+  border-radius: 24px;
+  border: 1px solid rgba(25, 33, 38, 0.08);
+  background: linear-gradient(180deg, rgba(244, 249, 247, 0.96), rgba(255, 255, 255, 0.72));
+}
+
+.today-operating-strip h2 {
+  margin: 4px 0 6px;
+  font-size: 1.45rem;
+}
+
+.today-operating-metrics {
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 4px 10px;
+  align-items: baseline;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.today-operating-metrics span {
+  font-size: 1.4rem;
+  font-weight: 800;
+}
+
+.today-operating-metrics small {
+  color: var(--muted);
+  font-family: "Helvetica Neue", Arial, sans-serif;
 }
 
 .today-step-card,
@@ -1766,6 +1858,12 @@ textarea {
   gap: 10px;
 }
 
+.review-commitment-box,
+.review-focus-support {
+  display: grid;
+  gap: 8px;
+}
+
 .review-action-row {
   margin-top: 0;
 }
@@ -1791,6 +1889,50 @@ textarea {
 
 .progress-detail-grid {
   align-items: start;
+}
+
+.progress-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.65fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.progress-main-flow,
+.progress-side-panel {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+
+.progress-side-panel {
+  position: sticky;
+  top: 18px;
+}
+
+.progress-side-metrics {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.progress-rail-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.progress-ai-panel {
+  border-color: rgba(45, 95, 79, 0.2);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(241, 248, 244, 0.78));
+}
+
+.progress-ai-action-list {
+  display: grid;
+  gap: 10px;
+}
+
+.progress-ai-action-list .button,
+.progress-ai-action-list .button-secondary {
+  width: 100%;
+  justify-content: center;
 }
 
 .progress-metric-card {
@@ -1927,6 +2069,161 @@ textarea {
 .progress-lesson-copy strong,
 .progress-lesson-copy span {
   overflow-wrap: anywhere;
+}
+
+.progress-course-manager {
+  display: grid;
+  gap: 18px;
+}
+
+.progress-top-actions {
+  margin-top: 0;
+}
+
+.progress-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.progress-section-count,
+.progress-course-date {
+  font-family: "Helvetica Neue", Arial, sans-serif;
+  font-size: 0.82rem;
+  font-weight: 650;
+  color: var(--muted);
+}
+
+.progress-course-list {
+  display: grid;
+  gap: 12px;
+}
+
+.progress-course-card {
+  display: grid;
+  gap: 12px;
+  padding: 18px;
+  border: 1px solid rgba(25, 33, 38, 0.08);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.progress-course-card.current {
+  border-color: rgba(45, 95, 79, 0.26);
+  background: linear-gradient(180deg, #fff, rgba(241, 248, 244, 0.94));
+}
+
+.progress-course-card.learned {
+  opacity: 0.94;
+}
+
+.progress-course-card.skipped {
+  opacity: 0.72;
+}
+
+.progress-course-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.progress-course-date {
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(25, 33, 38, 0.045);
+}
+
+.progress-recommendation-list {
+  display: grid;
+  gap: 12px;
+}
+
+.progress-recommendation-card {
+  display: grid;
+  gap: 10px;
+}
+
+.progress-action-row {
+  margin-top: 8px;
+}
+
+.progress-future-actions {
+  padding-top: 4px;
+}
+
+.progress-header-actions {
+  justify-content: flex-end;
+  margin-top: 0;
+}
+
+.progress-inline-edit {
+  display: grid;
+  gap: 8px;
+}
+
+.progress-inline-edit input,
+.progress-inline-edit textarea,
+.progress-manage-form input,
+.progress-manage-form textarea {
+  width: 100%;
+}
+
+.progress-manage-form {
+  display: grid;
+  gap: 12px;
+}
+
+.progress-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(17, 24, 28, 0.34);
+}
+
+.progress-modal {
+  width: min(100%, 520px);
+  display: grid;
+  gap: 18px;
+  padding: 24px;
+  border-radius: 22px;
+  border: 1px solid rgba(25, 33, 38, 0.12);
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 24px 70px rgba(17, 24, 28, 0.22);
+}
+
+.progress-modal-summary {
+  display: grid;
+  gap: 12px;
+}
+
+.progress-modal-summary > div {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(25, 33, 38, 0.08);
+  background: rgba(247, 241, 231, 0.62);
+}
+
+.progress-modal-warning {
+  border-color: rgba(168, 95, 45, 0.18) !important;
+  background: rgba(255, 246, 235, 0.84) !important;
+}
+
+.progress-modal-warning span {
+  font-family: "Helvetica Neue", Arial, sans-serif;
+  font-size: 0.92rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.progress-modal-actions {
+  justify-content: flex-end;
 }
 
 .lesson-hero-grid {
@@ -3022,9 +3319,23 @@ textarea {
   .metric-grid,
   .dashboard-grid,
   .progress-grid,
+  .progress-layout,
   .lesson-grid,
   .lesson-hero-grid {
     grid-template-columns: 1fr;
+  }
+
+  .progress-side-panel {
+    position: static;
+  }
+
+  .progress-side-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .progress-course-card-head {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .generated-plan-item {
@@ -3042,6 +3353,15 @@ textarea {
   .sidebar,
   .rail-panel {
     padding: 22px;
+  }
+
+  .today-operating-strip {
+    grid-template-columns: 1fr;
+  }
+
+  .today-operating-metrics {
+    width: 100%;
+    grid-template-columns: auto minmax(0, 1fr);
   }
 
   .hero-visual {

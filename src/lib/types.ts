@@ -60,6 +60,7 @@ export type ReviewGrade = "again" | "hard" | "good" | "easy";
 export type ReviewSessionType = "formal" | "warmup" | "extra" | "diagnostic";
 export type ReviewImportance = "core" | "extension";
 export type ReviewOutcome = ReviewGrade | "unseen";
+export type FsrsCardState = "New" | "Learning" | "Review" | "Relearning";
 export type LearningSourceType = "topic" | "text" | "pdf" | "image" | "url" | "youtube";
 export type AIProviderMode = "official" | "byok" | "oauth";
 export type AIConnectionStatus = "not_configured" | "configured" | "needs_attention";
@@ -86,6 +87,7 @@ export interface LearnerProfile {
   level: ProficiencyLevel;
   dailyMinutes: number;
   focus: LearningFocus;
+  desiredRetention?: number;
 }
 
 export interface LearningGoal {
@@ -260,6 +262,7 @@ export interface GeneratedPlanDay {
   dialogue: string[];
   asset: LessonAsset;
   completedAt?: string;
+  skippedAt?: string;
 }
 
 export interface GeneratedLearningPlan {
@@ -370,6 +373,14 @@ export interface ReviewItem {
   lastOutcome?: ReviewOutcome;
   lastConfidence?: number;
   needsReinforcement?: boolean;
+  fsrsState?: FsrsCardState;
+  fsrsStability?: number;
+  fsrsDifficulty?: number;
+  fsrsElapsedDays?: number;
+  fsrsScheduledDays?: number;
+  fsrsReps?: number;
+  fsrsLapses?: number;
+  fsrsLastReview?: string;
 }
 
 export interface ReviewLog {
@@ -388,6 +399,14 @@ export interface ReviewLog {
   skillDimension?: SkillDimension;
   learningType?: LearningType;
   outcome?: "correct" | "incorrect";
+  fsrsRating?: number;
+  fsrsStateBefore?: FsrsCardState;
+  fsrsStateAfter?: FsrsCardState;
+  fsrsStabilityBefore?: number;
+  fsrsStabilityAfter?: number;
+  fsrsDifficultyBefore?: number;
+  fsrsDifficultyAfter?: number;
+  scheduledDaysAfter?: number;
 }
 
 export interface AppState {

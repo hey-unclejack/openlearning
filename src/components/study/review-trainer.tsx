@@ -57,6 +57,13 @@ export function ReviewTrainer({
   const remainingCanCount = buckets ? items.filter((item) => buckets.canIds.includes(item.id)).length : 0;
 
   const current = items[0];
+  const currentBucket = current && buckets
+    ? buckets.mustIds.includes(current.id)
+      ? copy.reviewPage.bucketMust(remainingMustCount)
+      : buckets.shouldIds.includes(current.id)
+        ? copy.reviewPage.bucketShould(remainingShouldCount)
+        : copy.reviewPage.bucketCan(remainingCanCount)
+    : null;
 
   useEffect(() => {
     setCardStartAt(Date.now());
@@ -89,8 +96,16 @@ export function ReviewTrainer({
       return;
     }
 
+    const result = (await response.json()) as {
+      schedule?: { scheduledDays?: number; state?: string };
+    };
+    const scheduledDays = result.schedule?.scheduledDays;
     setStatusTone("success");
-    setStatus(`${copy.reviewPage.updated}${scoreToLabel(grade, locale)}。`);
+    setStatus(
+      scheduledDays !== undefined
+        ? `${copy.reviewPage.updated}${scoreToLabel(grade, locale)} · ${scheduledDays} ${locale === "zh-TW" ? "天後" : "days"}`
+        : `${copy.reviewPage.updated}${scoreToLabel(grade, locale)}。`,
+    );
     setShowBack(false);
     startTransition(() => {
       setItems((prev) => prev.slice(1));
@@ -153,10 +168,20 @@ export function ReviewTrainer({
             {copy.reviewPage.hint}
             {current.hint}
           </p>
+          {!showBack ? (
+            <div className="review-commitment-box">
+              <div className="eyebrow">{locale === "zh-TW" ? "先回想" : "Recall first"}</div>
+              <p className="subtle">
+                {locale === "zh-TW"
+                  ? "在翻答案前，先在心中或紙上說出答案。這次回想會比重看更能保住長期記憶。"
+                  : "Before revealing the answer, say or write it from memory. Retrieval is the work that protects long-term memory."}
+              </p>
+            </div>
+          ) : null}
           <div className="study-topic-support-list">
-            <div className="study-topic-support">
+            <div className="study-topic-support review-focus-support">
               <div className="eyebrow">{copy.reviewPage.pressureLabel}</div>
-              <p className="subtle">{copy.reviewPage.pressureBody}</p>
+              <p className="subtle">{currentBucket ?? copy.reviewPage.pressureBody}</p>
               <div className="today-focus-pills">
                 {weakTypes.map((type) => (
                   <span key={type} className="pill lesson-meta-pill-secondary">
